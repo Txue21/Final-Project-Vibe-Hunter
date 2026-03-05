@@ -1,0 +1,61 @@
+# CPSC 3750 Phase 1 - Battleship API
+# .gitignore
+
+# ====================
+# Temporary Test Files
+# ====================
+test-connection.php
+testdb.php
+test_*.php
+*_test.php
+
+# ====================
+# IDE / Editor Files
+# ====================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ====================
+# OS Files
+# ====================
+Thumbs.db
+desktop.ini
+
+# ====================
+# Logs & Debugging
+# ====================
+*.log
+error_log
+debug.log
+
+# ====================
+# Backup Files
+# ====================
+*.bak
+*.backup
+*.old
+*~
+
+# ====================
+# Local Environment
+# ====================
+.env
+.env.local
+
+# ====================
+# Notes
+# ====================
+# Keep these files for instructor review:
+# - All api/*.php files (production code)
+# - db.php (with placeholder credentials)
+# - config.php (TEST_MODE configuration)
+# - schema.sql (database schema)
+# - setup.php (deployment initialization)
+# - index.html (API documentation)
+# - README.md (project overview)
+# - HOSTINGER_SETUP.md (deployment guide)
+# - .htaccess (URL routing)

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battleship API - CPSC 3750 Phase 1</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 { color: #667eea; margin-bottom: 10px; }
+        h2 { color: #667eea; margin: 30px 0 15px; }
+        h3 { color: #764ba2; margin: 20px 0 10px; }
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .endpoint {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+        .method {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-right: 10px;
+            color: white;
+            font-size: 12px;
+        }
+        .post { background: #28a745; }
+        .get { background: #007bff; }
+        code {
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 10px 10px 10px 0;
+            transition: background 0.3s;
+        }
+        .btn:hover { background: #764ba2; }
+        .status { 
+            display: inline-block;
+            padding: 5px 10px;
+            background: #28a745;
+            color: white;
+            border-radius: 5px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+        th {
+            background: #667eea;
+            color: white;
+            font-weight: 600;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .feature {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #764ba2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 Battleship API</h1>
+            <p><strong>CPSC 3750 Final Project - Phase 1</strong></p>
+            <p>Distributed Multiplayer Battleship System</p>
+            <span class="status">API v1.0</span>
+        </header>
+
+        <div class="card">
+            <h2>✨ Core Features</h2>
+            <div class="feature-grid">
+                <div class="feature">
+                    <strong>UUID Players</strong><br>
+                    Universally unique player identification
+                </div>
+                <div class="feature">
+                    <strong>1-N Multiplayer</strong><br>
+                    Support for any number of players
+                </div>
+                <div class="feature">
+                    <strong>Turn Rotation</strong><br>
+                    Automatic turn management
+                </div>
+                <div class="feature">
+                    <strong>Statistics</strong><br>
+                    Wins, losses, accuracy tracking
+                </div>
+                <div class="feature">
+                    <strong>Transactions</strong><br>
+                    ACID-compliant persistence
+                </div>
+                <div class="feature">
+                    <strong>Test Mode</strong><br>
+                    Deterministic testing for grading
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>📋 API Endpoints</h2>
+            
+            <h3>System Control</h3>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/api/reset</code>
+                <p>Reset entire system (truncate all tables)</p>
+            </div>
+
+            <h3>Player Management</h3>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/api/players</code>
+                <p>Create new player with UUID</p>
+                <pre>{ "username": "alice" }</pre>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <code>/api/players/{id}/stats</code>
+                <p>Get player statistics (games, wins, losses, accuracy)</p>
+            </div>
+
+            <h3>Game Lifecycle</h3>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/api/games</code>
+                <p>Create new game (creator auto-joins with turn_order=0)</p>
+                <pre>{ "creator_id": "uuid", "grid_size": 8, "max_players": 3 }</pre>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/api/games/{id}/join</code>
+                <p>Join existing game</p>
+                <pre>{ "player_id": "uuid" }</pre>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <code>/api/games/{id}</code>
+                <p>Get game state</p>
+            </div>
+
+            <h3>Gameplay</h3>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/api/games/{id}/place</code>
+                <p>Place 3 ships (exactly 3 single-cell ships required)</p>
+                <pre>{ "player_id": "uuid", "ships": [{"row": 0, "col": 0}, ...] }</pre>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/api/games/{id}/fire</code>
+                <p>Fire at coordinate (validates turn, checks hit/miss, updates stats)</p>
+                <pre>{ "player_id": "uuid", "row": 3, "col": 4 }</pre>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <code>/api/games/{id}/moves</code>
+                <p>Get chronological move history</p>
+            </div>
+
+            <h3>Test Mode (Requires X-Test-Password: clemson-test-2026)</h3>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/api/test/games/{id}/restart</code>
+                <p>Restart game (clear ships/moves, preserve stats)</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/api/test/games/{id}/ships</code>
+                <p>Deterministic ship placement for testing</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <code>/api/test/games/{id}/board/{player_id}</code>
+                <p>Reveal board state (for autograder verification)</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🗄️ Database Schema</h2>
+            <table>
+                <tr>
+                    <th>Table</th>
+                    <th>Purpose</th>
+                    <th>Key Fields</th>
+                </tr>
+                <tr>
+                    <td><strong>Players</strong></td>
+                    <td>Player accounts with UUID</td>
+                    <td>player_id (UUID), username, stats</td>
+                </tr>
+                <tr>
+                    <td><strong>Games</strong></td>
+                    <td>Game instances</td>
+                    <td>game_id, grid_size, status, current_turn_index</td>
+                </tr>
+                <tr>
+                    <td><strong>GamePlayers</strong></td>
+                    <td>Many-to-many join table</td>
+                    <td>game_id, player_id, turn_order, ships_placed</td>
+                </tr>
+                <tr>
+                    <td><strong>Ships</strong></td>
+                    <td>Ship positions</td>
+                    <td>game_id, player_id, row, col, is_sunk</td>
+                </tr>
+                <tr>
+                    <td><strong>Moves</strong></td>
+                    <td>Move history log</td>
+                    <td>game_id, player_id, target_player_id, result</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
