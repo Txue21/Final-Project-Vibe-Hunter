@@ -3,6 +3,8 @@
 
 **Tian Xue** - Lead Systems Architect & DevOps
 
+**Pascual Sebastian** - Full Stack Developer
+
 ---
 
 ## 🎯 System Overview
@@ -122,6 +124,7 @@ public_html/
 ## 👤 Team Member
 
 **Tian Xue** - Lead Systems Architect & DevOps
+**Pascual Sebastian** - Full Stack Developer
 
 
 **Responsibilities:**
