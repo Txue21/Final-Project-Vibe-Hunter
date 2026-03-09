@@ -42,7 +42,7 @@ if ($game['status'] !== 'waiting') {
 // Validate player is in game
 $gamePlayer = getGamePlayer($pdo, $gameId, $playerId);
 if (!$gamePlayer) {
-    badRequest('Player is not in this game');
+    forbidden('Player is not in this game');
 }
 
 // Check if ships already placed

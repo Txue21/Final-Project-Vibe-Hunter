@@ -36,7 +36,7 @@ if (!$game) {
 // Validate player exists
 $player = getPlayer($pdo, $playerId);
 if (!$player) {
-    badRequest('Player does not exist');
+    forbidden('Invalid player ID');
 }
 
 // Check game status

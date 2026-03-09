@@ -41,7 +41,7 @@ try {
         
         // Validate game status
         if ($game['status'] !== 'active') {
-            badRequest('Game is not active');
+            forbidden('Game is not active');
         }
         
         // Validate coordinates
@@ -52,16 +52,16 @@ try {
         // Get current player's game info
         $gamePlayer = getGamePlayer($pdo, $gameId, $playerId);
         if (!$gamePlayer) {
-            badRequest('Player is not in this game');
+            forbidden('Player is not in this game');
         }
         
         if ($gamePlayer['is_eliminated']) {
-            badRequest('Player is eliminated');
+            forbidden('Player is eliminated');
         }
         
         // Validate it's player's turn
         if ($gamePlayer['turn_order'] != $game['current_turn_index']) {
-            badRequest('Not your turn');
+            forbidden('Not your turn');
         }
         
         // Get all active (non-eliminated) players except current player

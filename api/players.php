@@ -16,6 +16,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = getJsonBody();
     requireFields($data, ['username']);
     
+    // PHASE 1 ADDENDUM: Client may NOT supply player_id
+    if (isset($data['player_id'])) {
+        badRequest('player_id cannot be supplied by client - server generates it');
+    }
+    
     $username = trim($data['username']);
     
     if (empty($username)) {
@@ -23,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     try {
-        // Generate UUID
+        // Generate UUID (server-side only)
         $playerId = generateUUID($pdo);
         
         // Insert player with initialized stats
