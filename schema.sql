@@ -1,7 +1,7 @@
 -- ============================================
 -- CPSC 3750 Final Project - Phase 1
 -- Distributed Multiplayer Battleship System
--- Database Schema with UUID support
+-- Database Schema
 -- ============================================
 
 -- Drop existing tables in correct order (child tables first)
@@ -12,10 +12,10 @@ DROP TABLE IF EXISTS Games;
 DROP TABLE IF EXISTS Players;
 
 -- ============================================
--- Players Table (UUID-based)
+-- Players Table (INT AUTO_INCREMENT)
 -- ============================================
 CREATE TABLE Players (
-    player_id VARCHAR(36) PRIMARY KEY,  -- UUID format
+    player_id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
     games_played INT DEFAULT 0,
     wins INT DEFAULT 0,
