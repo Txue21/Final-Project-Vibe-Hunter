@@ -15,7 +15,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // Parse game ID from URL
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $parts = explode('/', trim($path, '/'));
-// Expected: api/games/{id}/fire
 $gameId = isset($parts[count($parts) - 2]) ? (int)$parts[count($parts) - 2] : 0;
 
 if ($gameId <= 0) {
@@ -25,7 +24,8 @@ if ($gameId <= 0) {
 $data = getJsonBody();
 requireFields($data, ['player_id', 'row', 'col']);
 
-$playerId = $data['player_id'];
+// Cast player_id to int (was left as raw string before)
+$playerId = (int)$data['player_id'];
 $row = (int)$data['row'];
 $col = (int)$data['col'];
 
@@ -33,7 +33,9 @@ try {
     $result = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $row, $col) {
         
         // Lock game row for update (prevent race conditions)
-        $game = $pdo->query("SELECT * FROM Games WHERE game_id = $gameId FOR UPDATE")->fetch();
+        $stmt = $pdo->prepare("SELECT * FROM Games WHERE game_id = ? FOR UPDATE");
+        $stmt->execute([$gameId]);
+        $game = $stmt->fetch();
         
         if (!$game) {
             notFound('Game not found');
@@ -77,9 +79,9 @@ try {
             badRequest('No valid targets');
         }
         
-        // Select random target (or you could use round-robin)
+        // Select random target
         $targetPlayer = $targets[array_rand($targets)];
-        $targetPlayerId = $targetPlayer['player_id'];
+        $targetPlayerId = (int)$targetPlayer['player_id'];
         
         // Check if hit or miss
         $stmt = $pdo->prepare("
@@ -125,7 +127,7 @@ try {
             $stmt->execute([$gameId, $targetPlayerId]);
             $shipCounts = $stmt->fetch();
             
-            if ($shipCounts['total'] == $shipCounts['sunk']) {
+            if ((int)$shipCounts['total'] === (int)$shipCounts['sunk']) {
                 // Eliminate target player
                 $stmt = $pdo->prepare("
                     UPDATE GamePlayers 
@@ -157,7 +159,7 @@ try {
                     ");
                     $stmt->execute([$winnerId, $gameId]);
                     
-                    // Update player stats
+                    // Update winner stats
                     $stmt = $pdo->prepare("
                         UPDATE Players 
                         SET games_played = games_played + 1, wins = wins + 1 
@@ -183,7 +185,6 @@ try {
         if ($gameStatus === 'active') {
             $activePlayers = getActivePlayers($pdo, $gameId);
             
-            // Find next player in turn order
             $currentIndex = -1;
             foreach ($activePlayers as $i => $ap) {
                 if ($ap['turn_order'] == $game['current_turn_index']) {
@@ -192,22 +193,20 @@ try {
                 }
             }
             
-            // Get next active player (circular)
             $nextIndex = ($currentIndex + 1) % count($activePlayers);
             $nextPlayer = $activePlayers[$nextIndex];
-            $nextPlayerId = $nextPlayer['player_id'];
+            $nextPlayerId = (int)$nextPlayer['player_id'];
             $nextTurnOrder = $nextPlayer['turn_order'];
             
-            // Update current turn index
             $stmt = $pdo->prepare("UPDATE Games SET current_turn_index = ? WHERE game_id = ?");
             $stmt->execute([$nextTurnOrder, $gameId]);
         }
         
         return [
-            'result' => $result,
+            'result'         => $result,
             'next_player_id' => $nextPlayerId,
-            'game_status' => $gameStatus,
-            'winner_id' => $winnerId
+            'game_status'    => $gameStatus,
+            'winner_id'      => $winnerId ? (int)$winnerId : null
         ];
     });
     

@@ -15,33 +15,32 @@ setCorsHeaders();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = getJsonBody();
     requireFields($data, ['username']);
-    
+
     // PHASE 1 ADDENDUM: Client may NOT supply player_id
     if (isset($data['player_id'])) {
         badRequest('player_id cannot be supplied by client - server generates it');
     }
-    
+
     $username = trim($data['username']);
-    
+
     if (empty($username)) {
         badRequest('Username cannot be empty');
     }
-    
+
     try {
-        // Generate UUID (server-side only)
-        $playerId = generateUUID($pdo);
-        
-        // Insert player with initialized stats
+        //  DB AUTO_INCREMENT handles player_id
         $stmt = $pdo->prepare("
-            INSERT INTO Players (player_id, username, games_played, wins, losses, total_shots, total_hits)
-            VALUES (?, ?, 0, 0, 0, 0, 0)
+            INSERT INTO Players (username, games_played, wins, losses, total_shots, total_hits)
+            VALUES (?, 0, 0, 0, 0, 0)
         ");
-        $stmt->execute([$playerId, $username]);
-        
+        $stmt->execute([$username]);
+
+        // Return auto-generated integer player_id
+        $playerId = (int)$pdo->lastInsertId();
+
         jsonResponse(['player_id' => $playerId], 201);
-        
+
     } catch (PDOException $e) {
-        // Check for duplicate username
         if ($e->getCode() == 23000) {
             badRequest('Username already exists');
         }

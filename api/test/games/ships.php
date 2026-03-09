@@ -2,14 +2,11 @@
 /**
  * POST /api/test/games/{id}/ships
  * Deterministic ship placement (test mode only)
- * Bypasses normal validation for autograder control
  */
 
 require_once __DIR__ . '/../../common.php';
 
 setCorsHeaders();
-
-// Require test mode authentication
 requireTestMode();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -19,7 +16,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // Parse game ID from URL
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $parts = explode('/', trim($path, '/'));
-// Expected: api/test/games/{id}/ships
 $gameId = isset($parts[count($parts) - 2]) ? (int)$parts[count($parts) - 2] : 0;
 
 if ($gameId <= 0) {
@@ -29,8 +25,9 @@ if ($gameId <= 0) {
 $data = getJsonBody();
 requireFields($data, ['player_id', 'ships']);
 
-$playerId = $data['player_id'];
-$ships = $data['ships'];
+// Cast player_id to int
+$playerId = (int)$data['player_id'];
+$ships    = $data['ships'];
 
 // Validate game exists
 $game = getGame($pdo, $gameId);
@@ -51,8 +48,8 @@ if (!$valid) {
 }
 
 try {
-    withTransaction($pdo, function($pdo) use ($gameId, $playerId, $ships, $gamePlayer) {
-        // Delete any existing ships for this player (in case of re-placement)
+    withTransaction($pdo, function($pdo) use ($gameId, $playerId, $ships) {
+        // Delete any existing ships for this player (re-placement allowed in test mode)
         $stmt = $pdo->prepare("DELETE FROM Ships WHERE game_id = ? AND player_id = ?");
         $stmt->execute([$gameId, $playerId]);
         
@@ -61,7 +58,6 @@ try {
             INSERT INTO Ships (game_id, player_id, row, col, is_sunk)
             VALUES (?, ?, ?, ?, FALSE)
         ");
-        
         foreach ($ships as $ship) {
             $stmt->execute([$gameId, $playerId, $ship['row'], $ship['col']]);
         }
