@@ -60,7 +60,7 @@ if ($currentPlayers >= $game['max_players']) {
 }
 
 try {
-    withTransaction($pdo, function($pdo) use ($gameId, $playerId, $currentPlayers, $game) {
+    $turnOrder = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $currentPlayers, $game) {
         // Add player with next turn_order
         $turnOrder = $currentPlayers;  // 0-indexed, so this is the next available
         

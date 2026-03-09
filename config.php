@@ -26,9 +26,11 @@ define('JSON_OPTIONS', JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 // ============================================
 // ERROR REPORTING (Development)
 // ============================================
-// Comment out in production
+// Disable display_errors to prevent HTML output in API responses
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+ini_set('display_errors', 0);  // Changed to 0 for production
+ini_set('log_errors', 1);      // Log errors instead
+ini_set('error_log', __DIR__ . '/error_log.txt');
 
 // ============================================
 // HELPER FUNCTIONS

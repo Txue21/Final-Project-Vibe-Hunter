@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     try {
-        withTransaction($pdo, function($pdo) use ($creatorId, $gridSize, $maxPlayers) {
+        $gameId = withTransaction($pdo, function($pdo) use ($creatorId, $gridSize, $maxPlayers) {
             // Create game
             $stmt = $pdo->prepare("
                 INSERT INTO Games (creator_id, grid_size, max_players, status, current_turn_index, active_players)
