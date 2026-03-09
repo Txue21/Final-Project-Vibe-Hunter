@@ -34,7 +34,7 @@ if (!$game) {
     notFound('Game not found');
 }
 
-// Validate game status
+// Validate game status - can only place during waiting
 if ($game['status'] !== 'waiting') {
     badRequest('Cannot place ships after game has started');
 }
@@ -57,44 +57,56 @@ if (!$valid) {
 }
 
 try {
-    withTransaction($pdo, function($pdo) use ($gameId, $playerId, $ships, $game) {
+    $gameStatus = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $ships) {
         // Insert all ships
         $stmt = $pdo->prepare("
             INSERT INTO Ships (game_id, player_id, row, col, is_sunk)
             VALUES (?, ?, ?, ?, FALSE)
         ");
-        
+
         foreach ($ships as $ship) {
             $stmt->execute([$gameId, $playerId, $ship['row'], $ship['col']]);
         }
-        
-        // Mark ships as placed
+
+        // Mark ships as placed for this player
         $stmt = $pdo->prepare("
-            UPDATE GamePlayers 
-            SET ships_placed = TRUE 
+            UPDATE GamePlayers
+            SET ships_placed = TRUE
             WHERE game_id = ? AND player_id = ?
         ");
         $stmt->execute([$gameId, $playerId]);
-        
-        // Check if all players have placed ships
+
+        // Check if ALL players in this game have placed ships
         $stmt = $pdo->prepare("
-            SELECT COUNT(*) as total,
-                   SUM(CASE WHEN ships_placed = TRUE THEN 1 ELSE 0 END) as placed
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN ships_placed = TRUE THEN 1 ELSE 0 END) as placed
             FROM GamePlayers
             WHERE game_id = ?
         ");
         $stmt->execute([$gameId]);
         $counts = $stmt->fetch();
-        
-        // If all players placed ships, activate game
-        if ($counts['total'] == $counts['placed']) {
+
+        // FIX: Explicitly cast to int to avoid string comparison issues
+        // This ensures 1-player games activate correctly
+        $total = (int)$counts['total'];
+        $placed = (int)$counts['placed'];
+
+        if ($total > 0 && $total === $placed) {
+            // All players have placed - activate the game
             $stmt = $pdo->prepare("UPDATE Games SET status = 'active' WHERE game_id = ?");
             $stmt->execute([$gameId]);
+            return 'active';
         }
+
+        return 'waiting';
     });
-    
-    jsonResponse(['status' => 'ships_placed'], 200);
-    
+
+    jsonResponse([
+        'status' => 'ships_placed',
+        'game_status' => $gameStatus
+    ], 200);
+
 } catch (PDOException $e) {
     if ($e->getCode() == 23000) {
         badRequest('Ship position already occupied');
