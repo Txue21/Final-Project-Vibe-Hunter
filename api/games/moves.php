@@ -15,7 +15,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 // Parse game ID from URL
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $parts = explode('/', trim($path, '/'));
-// Expected: api/games/{id}/moves
 $gameId = isset($parts[count($parts) - 2]) ? (int)$parts[count($parts) - 2] : 0;
 
 if ($gameId <= 0) {
@@ -29,7 +28,6 @@ if (!$game) {
 }
 
 try {
-    // Get all moves in chronological order
     $stmt = $pdo->prepare("
         SELECT 
             move_id,
@@ -47,16 +45,16 @@ try {
     $stmt->execute([$gameId]);
     $moves = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Format response
+    // FIX: Cast player_id and target_player_id to int in response
     $formattedMoves = array_map(function($move) {
         return [
-            'move_id' => (int)$move['move_id'],
-            'player_id' => $move['player_id'],
-            'target_player_id' => $move['target_player_id'],
-            'row' => (int)$move['row'],
-            'col' => (int)$move['col'],
-            'result' => $move['result'],
-            'timestamp' => $move['timestamp']
+            'move_id'          => (int)$move['move_id'],
+            'player_id'        => (int)$move['player_id'],
+            'target_player_id' => (int)$move['target_player_id'],
+            'row'              => (int)$move['row'],
+            'col'              => (int)$move['col'],
+            'result'           => $move['result'],
+            'timestamp'        => $move['timestamp']
         ];
     }, $moves);
     

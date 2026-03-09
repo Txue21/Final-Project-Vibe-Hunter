@@ -10,10 +10,6 @@ require_once __DIR__ . '/../db.php';
 // ============================================
 // HTTP HEADER CONFIGURATION
 // ============================================
-
-/**
- * Set CORS headers if enabled
- */
 function setCorsHeaders() {
     if (ENABLE_CORS) {
         header('Access-Control-Allow-Origin: *');
@@ -23,9 +19,6 @@ function setCorsHeaders() {
     header('Content-Type: application/json');
 }
 
-/**
- * Handle preflight OPTIONS request
- */
 function handlePreflight() {
     if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
         setCorsHeaders();
@@ -38,11 +31,6 @@ function handlePreflight() {
 // JSON RESPONSE HELPERS
 // ============================================
 
-/**
- * Send JSON response and exit
- * @param mixed $data Response data
- * @param int $statusCode HTTP status code
- */
 function jsonResponse($data, $statusCode = 200) {
     setCorsHeaders();
     http_response_code($statusCode);
@@ -50,39 +38,22 @@ function jsonResponse($data, $statusCode = 200) {
     exit;
 }
 
-/**
- * Send error response
- * @param string $message Error message
- * @param int $statusCode HTTP status code
- */
 function errorResponse($message, $statusCode = 400) {
     jsonResponse(['error' => $message], $statusCode);
 }
 
-/**
- * Send 400 Bad Request
- */
 function badRequest($message = 'Bad Request') {
     errorResponse($message, 400);
 }
 
-/**
- * Send 403 Forbidden
- */
 function forbidden($message = 'Forbidden') {
     errorResponse($message, 403);
 }
 
-/**
- * Send 404 Not Found
- */
 function notFound($message = 'Not Found') {
     errorResponse($message, 404);
 }
 
-/**
- * Send 500 Internal Server Error
- */
 function serverError($message = 'Internal Server Error') {
     errorResponse($message, 500);
 }
@@ -91,10 +62,6 @@ function serverError($message = 'Internal Server Error') {
 // REQUEST PARSING
 // ============================================
 
-/**
- * Get JSON body from request
- * @return array|null Parsed JSON data or null
- */
 function getJsonBody() {
     $json = file_get_contents('php://input');
     $data = json_decode($json, true);
@@ -106,12 +73,6 @@ function getJsonBody() {
     return $data ?? [];
 }
 
-/**
- * Require specific fields in request data
- * @param array $data Request data
- * @param array $required Required field names
- * @return void Exits with 400 if validation fails
- */
 function requireFields($data, $required) {
     foreach ($required as $field) {
         if (!isset($data[$field])) {
@@ -124,12 +85,6 @@ function requireFields($data, $required) {
 // DATABASE TRANSACTION HELPERS
 // ============================================
 
-/**
- * Execute database operation with automatic transaction handling
- * @param PDO $pdo Database connection
- * @param callable $callback Function to execute within transaction
- * @return mixed Result from callback
- */
 function withTransaction($pdo, $callback) {
     try {
         $pdo->beginTransaction();
@@ -146,10 +101,6 @@ function withTransaction($pdo, $callback) {
 // TEST MODE AUTHENTICATION
 // ============================================
 
-/**
- * Require valid test mode authentication
- * Returns 403 if test mode is disabled or password is invalid
- */
 function requireTestMode() {
     if (!isTestModeValid()) {
         forbidden('Test mode is disabled or invalid authentication');
@@ -160,45 +111,21 @@ function requireTestMode() {
 // VALIDATION HELPERS
 // ============================================
 
-/**
- * Validate grid size
- * @param int $gridSize Grid size to validate
- * @return bool True if valid
- */
 function isValidGridSize($gridSize) {
     return is_numeric($gridSize) && $gridSize >= 5 && $gridSize <= 15;
 }
 
-/**
- * Validate max players
- * @param int $maxPlayers Max players to validate
- * @return bool True if valid
- */
 function isValidMaxPlayers($maxPlayers) {
     return is_numeric($maxPlayers) && $maxPlayers >= 1;
 }
 
-/**
- * Validate coordinates within grid
- * @param int $row Row coordinate
- * @param int $col Column coordinate
- * @param int $gridSize Grid size
- * @return bool True if valid
- */
 function isValidCoordinate($row, $col, $gridSize) {
     return is_numeric($row) && is_numeric($col) 
         && $row >= 0 && $row < $gridSize 
         && $col >= 0 && $col < $gridSize;
 }
 
-/**
- * Validate ship placement data
- * @param array $ships Array of ship coordinates
- * @param int $gridSize Grid size
- * @return array [isValid, errorMessage]
- */
 function validateShips($ships, $gridSize) {
-    // Must have exactly 3 ships
     if (count($ships) !== 3) {
         return [false, 'Must place exactly 3 ships'];
     }
@@ -213,7 +140,6 @@ function validateShips($ships, $gridSize) {
             return [false, 'Invalid ship coordinates'];
         }
         
-        // Check for duplicate positions
         $pos = $ship['row'] . ',' . $ship['col'];
         if (in_array($pos, $positions)) {
             return [false, 'Ships cannot overlap'];
@@ -230,21 +156,20 @@ function validateShips($ships, $gridSize) {
 
 /**
  * Get player by ID
- * @param PDO $pdo Database connection
- * @param string $playerId Player ID
- * @return array|null Player data or null if not found
+ * FIX: Returns player_id as int in result
  */
 function getPlayer($pdo, $playerId) {
     $stmt = $pdo->prepare("SELECT * FROM Players WHERE player_id = ?");
-    $stmt->execute([$playerId]);
-    return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    $stmt->execute([(int)$playerId]);
+    $player = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($player) {
+        $player['player_id'] = (int)$player['player_id'];
+    }
+    return $player ?: null;
 }
 
 /**
  * Get game by ID
- * @param PDO $pdo Database connection
- * @param int $gameId Game ID
- * @return array|null Game data or null if not found
  */
 function getGame($pdo, $gameId) {
     $stmt = $pdo->prepare("SELECT * FROM Games WHERE game_id = ?");
@@ -254,22 +179,16 @@ function getGame($pdo, $gameId) {
 
 /**
  * Check if player is in game
- * @param PDO $pdo Database connection
- * @param int $gameId Game ID
- * @param string $playerId Player ID
- * @return array|null GamePlayers record or null
+ * FIX: Casts player_id to int before query
  */
 function getGamePlayer($pdo, $gameId, $playerId) {
     $stmt = $pdo->prepare("SELECT * FROM GamePlayers WHERE game_id = ? AND player_id = ?");
-    $stmt->execute([$gameId, $playerId]);
+    $stmt->execute([$gameId, (int)$playerId]);
     return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
 /**
  * Get active players in game (not eliminated)
- * @param PDO $pdo Database connection
- * @param int $gameId Game ID
- * @return array Array of player records
  */
 function getActivePlayers($pdo, $gameId) {
     $stmt = $pdo->prepare("

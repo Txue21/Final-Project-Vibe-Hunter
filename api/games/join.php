@@ -15,7 +15,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // Parse game ID from URL
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $parts = explode('/', trim($path, '/'));
-// Expected: api/games/{id}/join
 $gameId = isset($parts[count($parts) - 2]) ? (int)$parts[count($parts) - 2] : 0;
 
 if ($gameId <= 0) {
@@ -25,7 +24,8 @@ if ($gameId <= 0) {
 $data = getJsonBody();
 requireFields($data, ['player_id']);
 
-$playerId = $data['player_id'];
+// Cast player_id to int
+$playerId = (int)$data['player_id'];
 
 // Validate game exists
 $game = getGame($pdo, $gameId);
@@ -60,9 +60,8 @@ if ($currentPlayers >= $game['max_players']) {
 }
 
 try {
-    $turnOrder = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $currentPlayers, $game) {
-        // Add player with next turn_order
-        $turnOrder = $currentPlayers;  // 0-indexed, so this is the next available
+    $turnOrder = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $currentPlayers) {
+        $turnOrder = $currentPlayers;
         
         $stmt = $pdo->prepare("
             INSERT INTO GamePlayers (game_id, player_id, turn_order, ships_placed, is_eliminated)
@@ -70,7 +69,6 @@ try {
         ");
         $stmt->execute([$gameId, $playerId, $turnOrder]);
         
-        // Update active_players count
         $stmt = $pdo->prepare("UPDATE Games SET active_players = active_players + 1 WHERE game_id = ?");
         $stmt->execute([$gameId]);
         
@@ -78,7 +76,7 @@ try {
     });
     
     jsonResponse([
-        'status' => 'joined',
+        'status'     => 'joined',
         'turn_order' => (int)$turnOrder
     ], 200);
     
