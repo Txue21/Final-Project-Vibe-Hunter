@@ -126,25 +126,38 @@ function isValidCoordinate($row, $col, $gridSize) {
 }
 
 function validateShips($ships, $gridSize) {
-    if (count($ships) !== 3) {
-        return [false, 'Must place exactly 3 ships'];
+    // Ships must be an array
+    if (!is_array($ships) || count($ships) === 0) {
+        return [false, 'Ships array is required'];
     }
     
+    // Validate each ship and collect all positions
     $positions = [];
     foreach ($ships as $ship) {
+        // Each ship must have row and col
         if (!isset($ship['row']) || !isset($ship['col'])) {
             return [false, 'Each ship must have row and col'];
         }
         
-        if (!isValidCoordinate($ship['row'], $ship['col'], $gridSize)) {
-            return [false, 'Invalid ship coordinates'];
+        $row = (int)$ship['row'];
+        $col = (int)$ship['col'];
+        
+        // Check coordinates are within grid bounds
+        if (!isValidCoordinate($row, $col, $gridSize)) {
+            return [false, "Coordinate [$row, $col] is out of bounds for grid size $gridSize"];
         }
         
-        $pos = $ship['row'] . ',' . $ship['col'];
+        // Check for overlapping positions
+        $pos = "$row,$col";
         if (in_array($pos, $positions)) {
-            return [false, 'Ships cannot overlap'];
+            return [false, "Ships overlap at position [$row, $col]"];
         }
         $positions[] = $pos;
+    }
+    
+    // Must have exactly 3 ship cells total
+    if (count($positions) !== 3) {
+        return [false, "Must place exactly 3 ship cells (found " . count($positions) . ")"];
     }
     
     return [true, null];

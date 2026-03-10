@@ -88,7 +88,6 @@ try {
         $counts = $stmt->fetch();
 
         // FIX: Explicitly cast to int to avoid string comparison issues
-        // This ensures 1-player games activate correctly
         $total = (int)$counts['total'];
         $placed = (int)$counts['placed'];
 
@@ -103,7 +102,9 @@ try {
     });
 
     jsonResponse([
-        'status' => 'ships_placed'], 200);
+        'status' => 'ships_placed',
+        'game_status' => $gameStatus
+    ], 200);
 
 } catch (PDOException $e) {
     if ($e->getCode() == 23000) {

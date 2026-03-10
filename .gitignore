@@ -8,6 +8,8 @@ test-connection.php
 testdb.php
 test_*.php
 *_test.php
+debug_*.php
+api/test/debug.php
 
 # ====================
 # IDE / Editor Files
@@ -30,7 +32,10 @@ desktop.ini
 # ====================
 *.log
 error_log
+error_log.txt
 debug.log
+debug.php
+test-connection.php
 
 # ====================
 # Backup Files
@@ -45,6 +50,23 @@ debug.log
 # ====================
 .env
 .env.local
+
+# ====================
+# Postman / API Testing
+# ====================
+# Ignore Postman CLI workspace (personal identifiers)
+.postman/
+
+# Ignore collections (API documentation & tests)
+postman/
+
+# Ignore environment files if they contain secrets
+*.postman_environment.json
+*.postman_collection.json
+
+# Ignore Postman run/test results
+postman-results/
+newman/
 
 # ====================
 # Notes
