@@ -25,7 +25,7 @@ if ($gameId <= 0) {
 $data = getJsonBody();
 requireFields($data, ['player_id', 'ships']);
 
-$playerId = $data['player_id'];
+$playerId = (int)$data['player_id'];
 $ships = $data['ships'];
 
 // Validate game exists
@@ -103,9 +103,7 @@ try {
     });
 
     jsonResponse([
-        'status' => 'ships_placed',
-        'game_status' => $gameStatus
-    ], 200);
+        'status' => 'ships_placed'], 200);
 
 } catch (PDOException $e) {
     if ($e->getCode() == 23000) {
