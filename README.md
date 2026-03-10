@@ -1,140 +1,194 @@
 # CPSC 3750 Final Project - Phase 1
 ## Distributed Multiplayer Battleship System
 
-**Tian Xue** - Lead Systems Architect & DevOps
+**Production URL:** https://vibe-hunter.com
+**API Base:** https://vibe-hunter.com/api/
 
-**Pascual Sebastian** - Full Stack Developer
+---
+
+## 👥 Team Members
+
+| Name | Role |
+|------|------|
+| **Tian Xue** | Lead Systems Architect & DevOps |
+| **Pascual Sebastian** | Full Stack Developer & Testing Lead |
+
+### Tian Xue — Lead Systems Architect & DevOps
+- Designed and implemented all 12 API endpoints
+- Built the relational database schema with full constraint enforcement
+- Configured Hostinger deployment and domain setup (vibe-hunter.com)
+- Implemented transactional logic for the fire endpoint
+- Managed .htaccess URL routing and server configuration
+
+### Pascual Sebastian — Full Stack Developer & Testing Lead
+- Identified and fixed PHP closure scope bugs in games.php and join.php
+- Led testing strategy using Postman collections with automated assertions
+- Diagnosed and resolved player_id schema migration (UUID → INT AUTO_INCREMENT)
+- Updated all endpoint files to correctly cast player_id as integer throughout
+- Maintained AI Collaboration Log and project documentation
+
+---
+
+## 🤖 AI Tools Used
+
+| Tool | Purpose |
+|------|---------|
+| **Claude (Anthropic)** | Architecture review, bug diagnosis, code fixes, Postman test generation, documentation |
+| **ChatGPT (OpenAI)** | Supplementary code suggestions and brainstorming |
+
+### How AI Was Used
+AI was used as an engineering assistant — not as the decision maker. Humans retained control over all architectural decisions, schema design, and what code was actually deployed. AI suggestions were critically evaluated and tested before acceptance. At least one AI suggestion was rejected per phase (documented in the AI Collaboration Log).
 
 ---
 
 ## 🎯 System Overview
 
-Complete Phase 1 backend implementation with:
-- ✅ **12 API Endpoints** (9 production + 3 test mode)
-- ✅ **UUID-based player system** using MySQL UUID()
-- ✅ **Transactional persistence** with ACID compliance
-- ✅ **Database constraint enforcement** (foreign keys, CHECK, UNIQUE)
-- ✅ **Hostinger deployment ready** (vibe-hunter.com)
+A persistent, multiplayer, server-side Battleship system built in PHP with a MySQL relational database. The system supports 1–N players, configurable grid sizes, turn-based gameplay, player elimination, and lifetime statistics tracking.
+
+### Phase Structure
+- **Phase 1 (current):** Server + Database — REST API with full game lifecycle
+- **Phase 2 (upcoming):** Human Client — interactive front-end
+- **Phase 3 (upcoming):** Computer Player — autonomous AI opponent
+
+---
+
+## 🏗️ Architecture
+
+### System Design
+All game state is persisted in a MySQL relational database. There are no in-memory sessions — every state change is committed as a database transaction. The API layer is stateless PHP with PDO prepared statements throughout.
+
+### Technology Stack
+- **Server:** PHP 8.x on Hostinger shared hosting
+- **Database:** MySQL with InnoDB engine (ACID compliant)
+- **Routing:** Apache .htaccess RewriteRules
+- **Deployment:** Hostinger File Manager + phpMyAdmin
+
+### Multiplayer Model
+Players join games through a `GamePlayers` join table that creates a many-to-many relationship between Players and Games. Each player is assigned a `turn_order` when they join. Turn rotation is handled by querying active (non-eliminated) players ordered by `turn_order` and advancing circularly using `(currentIndex + 1) % activePlayers`.
+
+### Turn Logic
+- `current_turn_index` in the Games table tracks whose turn it is
+- After each fire move, the system queries non-eliminated players and computes the next turn
+- Eliminated players are automatically skipped since they are excluded from the active players query
+- A player is eliminated when all their ships have `is_sunk = TRUE`
+
+### Transaction Strategy
+The fire endpoint is fully transactional — hit detection, ship sinking, player elimination, stat updates, and turn advancement are all wrapped in a single atomic transaction with `FOR UPDATE` row locking to prevent race conditions.
+
+### File Structure
+```
+public_html/
+├── api/
+│   ├── common.php          # Shared utilities, validation helpers, DB query helpers
+│   ├── reset.php           # POST /api/reset
+│   ├── players.php         # POST /api/players, GET /api/players/{id}/stats
+│   ├── games.php           # POST /api/games, GET /api/games/{id}
+│   ├── games/
+│   │   ├── join.php        # POST /api/games/{id}/join
+│   │   ├── place.php       # POST /api/games/{id}/place
+│   │   ├── fire.php        # POST /api/games/{id}/fire (transactional)
+│   │   └── moves.php       # GET /api/games/{id}/moves
+│   └── test/
+│       └── games/
+│           ├── restart.php # POST /api/test/games/{id}/restart
+│           ├── ships.php   # POST /api/test/games/{id}/ships
+│           └── board.php   # GET /api/test/games/{id}/board/{player_id}
+├── .htaccess               # URL routing rules
+├── config.php              # TEST_MODE toggle and helpers
+├── db.php                  # PDO database connection
+├── schema.sql              # Database schema
+├── index.html              # API documentation page
+└── README.md               # This file
+```
+
+---
+
+## 🗄️ Database Design
+
+### Schema Summary
+5 tables with full relational integrity enforced at the database level. Application-layer checks are backed by mandatory database constraints.
+
+| Table | Primary Key | Key Constraints | Purpose |
+|-------|-------------|-----------------|---------|
+| Players | INT AUTO_INCREMENT | UNIQUE(username) | Player identity & lifetime stats |
+| Games | INT AUTO_INCREMENT | FK: creator_id, winner_id | Game instances & status |
+| GamePlayers | (game_id, player_id) composite | FK to Games & Players | Many-to-many join, turn order |
+| Ships | INT AUTO_INCREMENT | UNIQUE(game_id, player_id, row, col) | Ship positions per player |
+| Moves | INT AUTO_INCREMENT | FK: game_id, player_id, target_player_id | Full move history with timestamps |
+
+### Key Design Decisions
+- `player_id` is `INT AUTO_INCREMENT` — server-generated, client must never supply it (returns 400 if attempted)
+- `(gameId, playerId)` composite primary key in GamePlayers enforces uniqueness at the DB level
+- CHECK constraints enforce `grid_size` between 5–15 and `max_players` ≥ 1
+- All foreign keys use CASCADE or SET NULL to maintain referential integrity
+- InnoDB engine enables row-level locking and full transaction support
 
 ---
 
 ## 📋 API Endpoints
 
 ### Production API (9 endpoints)
-```
-POST   /api/reset
-POST   /api/players
-GET    /api/players/{id}/stats
-POST   /api/games
-POST   /api/games/{id}/join
-GET    /api/games/{id}
-POST   /api/games/{id}/place
-POST   /api/games/{id}/fire
-GET    /api/games/{id}/moves
-```
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /api/reset | Truncate all tables |
+| POST | /api/players | Create player, returns integer player_id |
+| GET | /api/players/{id}/stats | Lifetime stats: games, wins, losses, accuracy |
+| POST | /api/games | Create game, creator auto-joins at turn_order=0 |
+| POST | /api/games/{id}/join | Join a waiting game |
+| GET | /api/games/{id} | Get current game state |
+| POST | /api/games/{id}/place | Place exactly 3 ships |
+| POST | /api/games/{id}/fire | Fire move (fully transactional) |
+| GET | /api/games/{id}/moves | Chronological move history |
 
 ### Test Mode API (3 endpoints)
-**Requires:** `X-Test-Password: clemson-test-2026`
-```
-POST   /api/test/games/{id}/restart
-POST   /api/test/games/{id}/ships
-GET    /api/test/games/{id}/board/{player_id}
-```
+**Requires header:** `X-Test-Password: clemson-test-2026`
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /api/test/games/{id}/restart | Reset ships/moves, preserve stats |
+| POST | /api/test/games/{id}/ships | Deterministic ship placement for autograder |
+| GET | /api/test/games/{id}/board/{player_id} | Reveal board state for verification |
+
+### HTTP Status Codes
+- `200` — Success (GET requests, fire, join)
+- `201` — Created (POST /api/players, POST /api/games)
+- `400` — Bad request (missing fields, invalid values, duplicate username)
+- `403` — Forbidden (invalid player_id, wrong game, out of turn, eliminated)
+- `404` — Not found (game or player does not exist)
 
 ---
 
-## 🗄️ Database Schema
+## 🧪 Testing Strategy
 
-**5 Tables with full constraint enforcement:**
+### Postman Collections
+Two Postman collections cover all Checkpoint A requirements:
+1. **Checkpoint A Collection** — 26 tests covering all endpoints, validation, and status codes
+2. **Fix Verification Collection** — targeted tests for player_id integer type and ship placement activation
 
-1. **Players** - UUID primary key, username (unique), statistics
-2. **Games** - Game instances with grid_size, max_players, status
-3. **GamePlayers** - Join table (many-to-many) with turn_order
-4. **Ships** - Ship positions (3 per player) with is_sunk flag
-5. **Moves** - Complete move history with timestamps
+### Testing Approach
+- All code changes are tested in Postman against the live server before committing to GitHub
+- Edge cases tested: duplicate usernames, client-supplied player_id, invalid grid sizes, joining full games, placing ships twice, firing out of turn
+- Gradescope autograder serves as the final benchmark (Phase 1 Checkpoint A: 16/18 public tests passing)
 
-**Foreign keys:** CASCADE and SET NULL rules  
-**CHECK constraints:** grid_size (5-15), max_players (≥1)  
-**Engine:** InnoDB for transaction support
-
----
-
-## 🏗️ Architecture
-
-### Core Features
-- **UUID System:** MySQL UUID() for RFC 4122 compliance
-- **Multiplayer:** 1-N players with GamePlayers join table
-- **Turn Rotation:** Round-robin among active players
-- **Transactions:** Fire endpoint fully transactional
-- **Test Mode:** Secure authentication for autograder
-
-### File Structure
-```
-public_html/
-├── api/
-│   ├── common.php        # Shared utilities
-│   ├── reset.php         # System reset
-│   ├── players.php       # Player management
-│   ├── games.php         # Game management
-│   ├── games/
-│   │   ├── join.php      # Join game
-│   │   ├── place.php     # Place ships
-│   │   ├── fire.php      # Fire move (transactional)
-│   │   └── moves.php     # Move history
-│   └── test/
-│       └── games/
-│           ├── restart.php   # Test: restart
-│           ├── ships.php     # Test: ship placement
-│           └── board.php     # Test: board reveal
-├── .htaccess             # URL routing
-├── config.php            # TEST_MODE toggle
-├── db.php                # Database connection
-├── schema.sql            # Database schema
-├── index.html            # API documentation
-└── README.md             # This file
-```
+### Regression Discipline
+- Phase 1 endpoints will not be modified in Phases 2 or 3
+- Full Postman suite is re-run before every Gradescope submission
+- GitHub branch strategy: feature branches merged to main via Pull Requests
 
 ---
 
-## 🎯 Evaluation Criteria
+## 📊 Evaluation Criteria Status
 
-### ✅ API Contract Stability
-- All 12 endpoints with consistent JSON format
-- Proper HTTP status codes (200, 201, 400, 403, 404)
-- RESTful design principles
-- Backward compatible for Phase 2/3
-
-### ✅ Database Constraint Enforcement
-- Foreign key constraints (CASCADE, SET NULL)
-- CHECK constraints on grid_size (5-15) and max_players (≥1)
-- UNIQUE constraints on usernames and ship positions
-- InnoDB engine with full ACID compliance
-- Indexes on high-frequency queries
-
-### ✅ Successful System Deployment
-- UUID-based player system operational
-- Transactional logic implemented (fire endpoint)
-- Hostinger deployment configured (vibe-hunter.com)
-- Database initialization automated
-- TEST_MODE enabled for autograder compatibility
-
----
----
-
-## 👤 Team Member
-
-**Tian Xue** - Lead Systems Architect & DevOps
-**Pascual Sebastian** - Full Stack Developer
-
-
-**Responsibilities:**
-- Backend API architecture design
-- UUID-based player system implementation
-- Database schema with constraint enforcement
-- Transactional logic for data persistence
-- Hostinger/Domain deployment (vibe-hunter.com)
-- API contract stability
-
----
-**Production URL:** https://vibe-hunter.com  
-**API Base:** https://vibe-hunter.com/api/
+| Criteria | Status |
+|----------|--------|
+| 12 API endpoints functional | ✅ Complete |
+| Correct HTTP status codes | ✅ Complete |
+| Database constraint enforcement | ✅ Complete |
+| Integer player_id (server-generated) | ✅ Complete |
+| Turn rotation logic | ✅ Complete |
+| Player elimination logic | ✅ Complete |
+| Move logging with timestamps | ✅ Complete |
+| Lifetime statistics (transactional) | ✅ Complete |
+| Test mode secured with password | ✅ Complete |
+| Hostinger deployment live | ✅ vibe-hunter.com |
