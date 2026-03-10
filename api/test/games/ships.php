@@ -48,7 +48,7 @@ if (!$valid) {
 }
 
 try {
-    withTransaction($pdo, function($pdo) use ($gameId, $playerId, $ships) {
+    $gameStatus = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $ships) {
         // Delete any existing ships for this player (re-placement allowed in test mode)
         $stmt = $pdo->prepare("DELETE FROM Ships WHERE game_id = ? AND player_id = ?");
         $stmt->execute([$gameId, $playerId]);
@@ -69,9 +69,34 @@ try {
             WHERE game_id = ? AND player_id = ?
         ");
         $stmt->execute([$gameId, $playerId]);
+
+        // Check if ALL players have placed ships
+        $stmt = $pdo->prepare("
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN ships_placed = TRUE THEN 1 ELSE 0 END) as placed
+            FROM GamePlayers
+            WHERE game_id = ?
+        ");
+        $stmt->execute([$gameId]);
+        $counts = $stmt->fetch();
+
+        $total = (int)$counts['total'];
+        $placed = (int)$counts['placed'];
+
+        if ($total > 0 && $total === $placed) {
+            $stmt = $pdo->prepare("UPDATE Games SET status = 'active' WHERE game_id = ?");
+            $stmt->execute([$gameId]);
+            return 'active';
+        }
+
+        return 'waiting';
     });
     
-    jsonResponse(['status' => 'ships_placed'], 200);
+    jsonResponse([
+        'status' => 'ships_placed',
+        'game_status' => $gameStatus
+    ], 200);
     
 } catch (Exception $e) {
     error_log("Failed to place test ships: " . $e->getMessage());
