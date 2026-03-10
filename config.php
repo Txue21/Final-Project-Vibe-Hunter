@@ -45,9 +45,15 @@ function isTestModeValid() {
         return false;
     }
     
-    // Check for X-Test-Password header
+    // Try getallheaders() first
     $headers = getallheaders();
     $password = $headers['X-Test-Password'] ?? '';
+    
+    // Fallback: LiteSpeed/Hostinger may not pass headers via getallheaders()
+    // Check $_SERVER with HTTP_ prefix instead
+    if (empty($password)) {
+        $password = $_SERVER['HTTP_X_TEST_PASSWORD'] ?? '';
+    }
     
     return $password === TEST_PASSWORD;
 }
