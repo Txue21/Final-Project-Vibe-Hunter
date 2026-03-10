@@ -93,10 +93,7 @@ try {
         return 'waiting';
     });
     
-    jsonResponse([
-        'status' => 'ships_placed',
-        'game_status' => $gameStatus
-    ], 200);
+    jsonResponse(['status' => 'ships_placed'], 200);
     
 } catch (Exception $e) {
     error_log("Failed to place test ships: " . $e->getMessage());
