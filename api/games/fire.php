@@ -41,9 +41,9 @@ try {
             notFound('Game not found');
         }
         
-        // Validate game status
+        // Validate game status - must be active (all players have placed ships)
         if ($game['status'] !== 'active') {
-            forbidden('Game is not active');
+            badRequest('Game is not active - all players must place ships first');
         }
         
         // Validate coordinates
