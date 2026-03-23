@@ -36,7 +36,7 @@ if (!$game) {
 
 // Validate game status - can only place during waiting
 if ($game['status'] !== 'waiting') {
-    badRequest('Cannot place ships after game has started');
+    forbidden('Cannot place ships after game has started');
 }
 
 // Validate player is in game
@@ -101,10 +101,7 @@ try {
         return 'waiting';
     });
 
-    jsonResponse([
-        'status' => 'ships_placed',
-        'game_status' => $gameStatus
-    ], 200);
+    jsonResponse(['status' => 'ships_placed'], 200);
 
 } catch (PDOException $e) {
     if ($e->getCode() == 23000) {
