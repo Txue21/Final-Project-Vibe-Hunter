@@ -202,12 +202,17 @@ try {
             $stmt->execute([$nextTurnOrder, $gameId]);
         }
         
-        return [
+        $response = [
             'result'         => $result,
             'next_player_id' => $nextPlayerId,
             'game_status'    => $gameStatus,
-            'winner_id'      => $winnerId ? (int)$winnerId : null
         ];
+
+        if ($gameStatus === 'finished') {
+            $response['winner_id'] = (int)$winnerId;
+        }
+
+        return $response;
     });
     
     jsonResponse($result, 200);
