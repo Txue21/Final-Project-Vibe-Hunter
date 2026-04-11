@@ -1,8 +1,26 @@
-# HTACCESS Configuration for Battle ship API Routing
+# HTACCESS Configuration for Battleship API Routing
 # Enables clean URL routing for API endpoints
 
 RewriteEngine On
 RewriteBase /
+
+# ============================================
+# LiteSpeed Rate Limit Bypass
+# ============================================
+<IfModule LiteSpeed>
+    RewriteRule .* - [E=noabort:1]
+    RewriteRule .* - [E=noconntimeout:1]
+</IfModule>
+
+# ============================================
+# CORS Headers (override any server defaults)
+# ============================================
+<IfModule mod_headers.c>
+    Header always set Access-Control-Allow-Origin "*"
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type, X-Test-Password"
+    Header unset Retry-After
+</IfModule>
 
 # Allow CORS preflight requests
 RewriteCond %{REQUEST_METHOD} OPTIONS
