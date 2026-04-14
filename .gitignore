@@ -52,6 +52,13 @@ test-connection.php
 .env.local
 
 # ====================
+# Node.js / NPM (Phase 2 Client)
+# ====================
+node_modules/
+dist/
+*.local
+
+# ====================
 # Postman / API Testing
 # ====================
 # Ignore Postman CLI workspace (personal identifiers)

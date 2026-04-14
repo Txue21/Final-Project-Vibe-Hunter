@@ -1,0 +1,80 @@
+import { useState } from 'react';
+import RegisterPlayer from './components/RegisterPlayer';
+import Lobby from './components/Lobby';
+import ShipPlacement from './components/ShipPlacement';
+import GameBoard from './components/GameBoard';
+import GameOver from './components/GameOver';
+
+function App() {
+  const [player, setPlayer] = useState(null);
+  const [currentGameId, setCurrentGameId] = useState(null);
+  const [currentView, setCurrentView] = useState('lobby'); // 'lobby', 'shipPlacement', 'game', 'gameOver'
+  const [winnerId, setWinnerId] = useState(null);
+
+  const handleRegisterSuccess = (playerData) => {
+    setPlayer(playerData);
+    setCurrentView('lobby');
+  };
+
+  const handleJoinGame = (gameId) => {
+    setCurrentGameId(gameId);
+    setCurrentView('shipPlacement');
+  };
+
+  const handlePlacementComplete = () => {
+    setCurrentView('game');
+  };
+
+  const handleGameOver = (winner) => {
+    setWinnerId(winner);
+    setCurrentView('gameOver');
+    // Show winner announcement
+    alert(`🏆 Game Over! ${winner === player.playerId ? 'You won!' : `Player ${winner} won!`}`);
+  };
+
+  const handleBackToLobby = () => {
+    setCurrentGameId(null);
+    setCurrentView('lobby');
+    setWinnerId(null);
+  };
+
+  // Not registered - show registration
+  if (!player) {
+    return <RegisterPlayer onRegisterSuccess={handleRegisterSuccess} />;
+  }
+
+  // Show appropriate view based on state
+  if (currentView === 'shipPlacement' && currentGameId) {
+    return (
+      <ShipPlacement 
+        gameId={currentGameId} 
+        onPlacementComplete={handlePlacementComplete}
+      />
+    );
+  }
+
+  if (currentView === 'game' && currentGameId) {
+    return (
+      <GameBoard
+        gameId={currentGameId}
+        onGameOver={handleGameOver}
+        onBackToLobby={handleBackToLobby}
+      />
+    );
+  }
+
+  if (currentView === 'gameOver' && currentGameId) {
+    return (
+      <GameOver
+        winnerId={winnerId}
+        gameId={currentGameId}
+        onBackToLobby={handleBackToLobby}
+      />
+    );
+  }
+
+  // Default - show lobby
+  return <Lobby onJoinGame={handleJoinGame} />;
+}
+
+export default App;
