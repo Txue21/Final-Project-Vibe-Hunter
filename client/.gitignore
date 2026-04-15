@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Deployment and documentation files
+DEPLOYMENT.md
+*.md.backup

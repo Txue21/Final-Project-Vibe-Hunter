@@ -76,6 +76,12 @@ postman-results/
 newman/
 
 # ====================
+# Deployment Files
+# ====================
+DEPLOYMENT.md
+*DEPLOYMENT*.md
+
+# ====================
 # Notes
 # ====================
 # Keep these files for instructor review:
