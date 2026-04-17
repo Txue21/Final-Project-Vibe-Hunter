@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { getAllGames, createGame, joinGame, getPlayerStats } from '../services/api';
+import { getAllGames, createGame, joinGame, getPlayerStats, getAllPlayers } from '../services/api';
 import { getPlayer, clearPlayer } from '../utils/localStorage';
 
 function Lobby({ onJoinGame }) {
   const [games, setGames] = useState([]);
   const [stats, setStats] = useState(null);
+  const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [gridSize, setGridSize] = useState(8);
@@ -15,7 +16,11 @@ function Lobby({ onJoinGame }) {
   useEffect(() => {
     fetchGames();
     fetchStats();
-    const interval = setInterval(fetchGames, 3000);
+    fetchLeaderboard();
+    const interval = setInterval(() => {
+      fetchGames();
+      fetchLeaderboard();
+    }, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -28,6 +33,21 @@ function Lobby({ onJoinGame }) {
     if (!player) return;
     const { data } = await getPlayerStats(player.playerId);
     if (data) setStats(data);
+  };
+
+  const fetchLeaderboard = async () => {
+    const { data } = await getAllPlayers();
+    if (data && Array.isArray(data)) {
+      // Sort by wins (descending), then by accuracy
+      const sorted = [...data]
+        .filter(p => p.games_played > 0)
+        .sort((a, b) => {
+          if (b.wins !== a.wins) return b.wins - a.wins;
+          return (b.accuracy || 0) - (a.accuracy || 0);
+        })
+        .slice(0, 10); // Top 10 only
+      setLeaderboard(sorted);
+    }
   };
 
   const handleCreateGame = async (e) => {
@@ -165,6 +185,42 @@ function Lobby({ onJoinGame }) {
                 </div>
               ) : (
                 <p style={styles.noStats}>🎲 No stats yet - create your first game!</p>
+              )}
+            </div>
+
+            {/* Leaderboard Card */}
+            <div style={styles.card}>
+              <h2 style={styles.cardTitle}>🏆 Leaderboard</h2>
+              {leaderboard.length > 0 ? (
+                <div style={styles.leaderboardList}>
+                  {leaderboard.map((player, index) => (
+                    <div 
+                      key={player.player_id} 
+                      style={{
+                        ...styles.leaderboardItem,
+                        background: index === 0 ? '#fef3c7' : index === 1 ? '#e5e7eb' : index === 2 ? '#fde68a' : 'white'
+                      }}
+                    >
+                      <div style={styles.leaderboardRank}>
+                        {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                      </div>
+                      <div style={styles.leaderboardName}>
+                        {player.username}
+                        {player.player_id === getPlayer()?.playerId && (
+                          <span style={styles.youBadge}>YOU</span>
+                        )}
+                      </div>
+                      <div style={styles.leaderboardStats}>
+                        <span style={styles.leaderboardWins}>{player.wins}W</span>
+                        <span style={styles.leaderboardAccuracy}>
+                          {player.accuracy ? (player.accuracy * 100).toFixed(0) : 0}%
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={styles.noStats}>🎯 No players yet - be the first!</p>
               )}
             </div>
           </div>
@@ -472,6 +528,54 @@ const styles = {
     cursor: 'not-allowed',
     fontWeight: '600',
     fontSize: '15px',
+  },
+  leaderboardList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  leaderboardItem: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '12px',
+    borderRadius: '8px',
+    border: '1px solid #e5e7eb',
+    gap: '12px',
+  },
+  leaderboardRank: {
+    fontSize: '20px',
+    fontWeight: 'bold',
+    minWidth: '40px',
+    textAlign: 'center',
+  },
+  leaderboardName: {
+    flex: 1,
+    fontSize: '15px',
+    fontWeight: '600',
+    color: '#1f2937',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  youBadge: {
+    fontSize: '10px',
+    padding: '2px 6px',
+    background: '#667eea',
+    color: 'white',
+    borderRadius: '4px',
+    fontWeight: 'bold',
+  },
+  leaderboardStats: {
+    display: 'flex',
+    gap: '12px',
+    fontSize: '14px',
+    fontWeight: '600',
+  },
+  leaderboardWins: {
+    color: '#10b981',
+  },
+  leaderboardAccuracy: {
+    color: '#667eea',
   },
 };
 

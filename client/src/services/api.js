@@ -104,3 +104,12 @@ export const getMoves = async (gameId) => {
     return handleError(error);
   }
 };
+
+export const getAllPlayers = async () => {
+  try {
+    const response = await axios.get(`${API_BASE}/players`);
+    return handleResponse(response);
+  } catch (error) {
+    return handleError(error);
+  }
+};

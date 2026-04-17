@@ -208,10 +208,13 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
         </div>
 
         {/* Turn Indicator */}
-        <div style={{
-          ...styles.turnIndicator,
-          backgroundColor: isMyTurn ? '#10b981' : '#f59e0b',
-        }}>
+        <div 
+          className={isMyTurn ? 'pulse-animation' : ''}
+          style={{
+            ...styles.turnIndicator,
+            backgroundColor: isMyTurn ? '#10b981' : '#f59e0b',
+          }}
+        >
           {isMyTurn ? (
             <span>🎯 YOUR TURN! Fire at the coordinates below</span>
           ) : (

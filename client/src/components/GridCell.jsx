@@ -1,4 +1,5 @@
 // Reusable Grid Cell component for Battleship game
+import { useEffect, useState } from 'react';
 
 function GridCell({ 
   row, 
@@ -10,6 +11,25 @@ function GridCell({
   showCoordinate = false 
 }) {
   // state can be: 'empty', 'ship', 'hit', 'miss', 'sunk'
+  const [prevState, setPrevState] = useState(state);
+  const [animationClass, setAnimationClass] = useState('');
+
+  // Trigger animation when state changes to hit or miss
+  useEffect(() => {
+    if (state !== prevState) {
+      if (state === 'hit') {
+        setAnimationClass('cell-hit-animation');
+        setTimeout(() => setAnimationClass(''), 600);
+      } else if (state === 'miss') {
+        setAnimationClass('cell-miss-animation');
+        setTimeout(() => setAnimationClass(''), 600);
+      } else if (state === 'sunk') {
+        setAnimationClass('cell-sunk-animation');
+        setTimeout(() => setAnimationClass(''), 800);
+      }
+      setPrevState(state);
+    }
+  }, [state, prevState]);
   
   const getCellStyle = () => {
     const baseStyle = {
@@ -20,7 +40,7 @@ function GridCell({
       justifyContent: 'center',
       border: '1px solid #d1d5db',
       cursor: disabled ? 'default' : onClick ? 'pointer' : 'default',
-      transition: 'all 0.2s',
+      transition: 'all 0.3s ease',
       fontSize: `${size * 0.5}px`,
       fontWeight: 'bold',
       userSelect: 'none',
