@@ -24,7 +24,6 @@ if ($gameId <= 0) {
 $data = getJsonBody();
 requireFields($data, ['player_id', 'row', 'col']);
 
-// Cast player_id to int (was left as raw string before)
 $playerId = (int)$data['player_id'];
 $row = (int)$data['row'];
 $col = (int)$data['col'];
@@ -32,7 +31,7 @@ $col = (int)$data['col'];
 try {
     $result = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $row, $col) {
         
-        // Lock game row for update (prevent race conditions)
+        // Lock game row for update
         $stmt = $pdo->prepare("SELECT * FROM Games WHERE game_id = ? FOR UPDATE");
         $stmt->execute([$gameId]);
         $game = $stmt->fetch();
@@ -41,12 +40,12 @@ try {
             notFound('Game not found');
         }
         
-        // Validate game status - must be active (all players have placed ships)
-        if ($game['status'] !== 'active') {
-            badRequest('Game is not active - all players must place ships first');
+        // Validate game status - must be active/playing
+        if ($game['status'] !== 'active' && $game['status'] !== 'playing') {
+            badRequest('Game is not active');
         }
         
-        // Validate coordinates
+        // Validate coordinates BEFORE turn check (400 > 403 in priority)
         if (!isValidCoordinate($row, $col, $game['grid_size'])) {
             badRequest('Invalid coordinates');
         }
@@ -64,6 +63,16 @@ try {
         // Validate it's player's turn
         if ($gamePlayer['turn_order'] != $game['current_turn_index']) {
             forbidden('Not your turn');
+        }
+        
+        // Check if already fired at this cell - 409 Conflict
+        $stmt = $pdo->prepare("
+            SELECT move_id FROM Moves 
+            WHERE game_id = ? AND player_id = ? AND row = ? AND col = ?
+        ");
+        $stmt->execute([$gameId, $playerId, $row, $col]);
+        if ($stmt->fetch()) {
+            jsonResponse(['error' => 'Cell already targeted'], 409);
         }
         
         // Get all active (non-eliminated) players except current player
@@ -110,9 +119,8 @@ try {
         $stmt->execute([$playerId]);
         
         $winnerId = null;
-        $gameStatus = 'active';
+        $gameStatus = 'playing'; // Use 'playing' in responses (spec term)
         
-        // If hit, mark ship as sunk and check elimination
         if ($isHit) {
             $stmt = $pdo->prepare("UPDATE Ships SET is_sunk = TRUE WHERE ship_id = ?");
             $stmt->execute([$ship['ship_id']]);
@@ -128,7 +136,6 @@ try {
             $shipCounts = $stmt->fetch();
             
             if ((int)$shipCounts['total'] === (int)$shipCounts['sunk']) {
-                // Eliminate target player
                 $stmt = $pdo->prepare("
                     UPDATE GamePlayers 
                     SET is_eliminated = TRUE 
@@ -136,30 +143,22 @@ try {
                 ");
                 $stmt->execute([$gameId, $targetPlayerId]);
                 
-                // Decrement active players
                 $stmt = $pdo->prepare("
-                    UPDATE Games 
-                    SET active_players = active_players - 1 
-                    WHERE game_id = ?
+                    UPDATE Games SET active_players = active_players - 1 WHERE game_id = ?
                 ");
                 $stmt->execute([$gameId]);
                 
                 $game['active_players']--;
                 
-                // Check win condition
                 if ($game['active_players'] == 1) {
                     $gameStatus = 'finished';
                     $winnerId = $playerId;
                     
-                    // Update game
                     $stmt = $pdo->prepare("
-                        UPDATE Games 
-                        SET status = 'finished', winner_id = ? 
-                        WHERE game_id = ?
+                        UPDATE Games SET status = 'finished', winner_id = ? WHERE game_id = ?
                     ");
                     $stmt->execute([$winnerId, $gameId]);
                     
-                    // Update winner stats
                     $stmt = $pdo->prepare("
                         UPDATE Players 
                         SET games_played = games_played + 1, wins = wins + 1 
@@ -167,12 +166,10 @@ try {
                     ");
                     $stmt->execute([$winnerId]);
                     
-                    // Update all other players (losses)
                     $stmt = $pdo->prepare("
                         UPDATE Players p
                         INNER JOIN GamePlayers gp ON p.player_id = gp.player_id
-                        SET p.games_played = p.games_played + 1,
-                            p.losses = p.losses + 1
+                        SET p.games_played = p.games_played + 1, p.losses = p.losses + 1
                         WHERE gp.game_id = ? AND p.player_id != ?
                     ");
                     $stmt->execute([$gameId, $winnerId]);
@@ -182,7 +179,7 @@ try {
         
         // Advance turn to next active player
         $nextPlayerId = null;
-        if ($gameStatus === 'active') {
+        if ($gameStatus === 'playing') {
             $activePlayers = getActivePlayers($pdo, $gameId);
             
             $currentIndex = -1;
