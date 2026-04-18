@@ -3,7 +3,6 @@
 -- Distributed Multiplayer Battleship System
 -- Database Schema
 -- ============================================
-
 -- Drop existing tables in correct order (child tables first)
 DROP TABLE IF EXISTS Moves;
 DROP TABLE IF EXISTS Ships;
@@ -34,7 +33,7 @@ CREATE TABLE Games (
     creator_id INT NOT NULL,
     grid_size INT NOT NULL CHECK (grid_size >= 5 AND grid_size <= 15),
     max_players INT NOT NULL CHECK (max_players >= 1),
-    status ENUM('waiting', 'active', 'finished') DEFAULT 'waiting',
+    status ENUM('waiting_setup', 'active', 'finished') DEFAULT 'waiting_setup',
     current_turn_index INT DEFAULT 0,
     active_players INT DEFAULT 1,
     winner_id INT NULL,
