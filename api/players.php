@@ -53,12 +53,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ============================================
 // GET /api/players/{id}/stats - Get Player Stats
+// GET /api/players - Get All Players (Leaderboard)
 // ============================================
 else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
     $parts = explode('/', trim($path, '/'));
 
-    if (count($parts) >= 3 && $parts[count($parts) - 1] === 'stats') {
+    // GET /api/players - List all players with stats
+    if (count($parts) === 2 && $parts[1] === 'players') {
+        try {
+            $stmt = $pdo->query("
+                SELECT 
+                    player_id,
+                    username,
+                    games_played,
+                    wins,
+                    losses,
+                    total_shots,
+                    total_hits,
+                    CASE 
+                        WHEN total_shots > 0 THEN ROUND(total_hits / total_shots, 3)
+                        ELSE 0.0
+                    END as accuracy
+                FROM Players
+                ORDER BY wins DESC, accuracy DESC
+            ");
+            $players = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Convert numeric fields to integers
+            foreach ($players as &$player) {
+                $player['player_id'] = (int)$player['player_id'];
+                $player['games_played'] = (int)$player['games_played'];
+                $player['wins'] = (int)$player['wins'];
+                $player['losses'] = (int)$player['losses'];
+                $player['total_shots'] = (int)$player['total_shots'];
+                $player['total_hits'] = (int)$player['total_hits'];
+                $player['accuracy'] = (float)$player['accuracy'];
+            }
+
+            jsonResponse($players, 200);
+        } catch (PDOException $e) {
+            error_log("Failed to fetch players: " . $e->getMessage());
+            serverError('Failed to fetch players');
+        }
+    }
+    // GET /api/players/{id}/stats - Get specific player stats
+    else if (count($parts) >= 3 && $parts[count($parts) - 1] === 'stats') {
         $playerId = $parts[count($parts) - 2];
 
         $player = getPlayer($pdo, $playerId);
