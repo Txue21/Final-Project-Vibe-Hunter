@@ -1,15 +1,22 @@
 import { useState, useEffect } from 'react';
-import { getPlayerStats } from '../services/api';
-import { getPlayer } from '../utils/localstorage';
+import { getPlayerStats, getGame } from '../services/api';
+import { getPlayer } from '../utils/localStorage';
 
 function GameOver({ winnerId, gameId, onBackToLobby }) {
   const [stats, setStats] = useState(null);
+  const [gameData, setGameData] = useState(null);
   const [loading, setLoading] = useState(true);
   const player = getPlayer();
   const isWinner = winnerId === player?.playerId;
 
   useEffect(() => {
-    fetchStats();
+    // Wait 2 seconds before fetching stats to ensure database is fully updated
+    const timer = setTimeout(() => {
+      fetchStats();
+      fetchGameData();
+    }, 2000);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   const fetchStats = async () => {
@@ -20,6 +27,20 @@ function GameOver({ winnerId, gameId, onBackToLobby }) {
       setStats(data);
     }
     setLoading(false);
+  };
+
+  const fetchGameData = async () => {
+    const { data } = await getGame(gameId);
+    if (data) {
+      setGameData(data);
+    }
+  };
+
+  // Get winner username from game data
+  const getWinnerName = () => {
+    if (!gameData || !gameData.players) return `Player ${winnerId}`;
+    const winnerPlayer = gameData.players.find(p => p.player_id === winnerId);
+    return winnerPlayer ? winnerPlayer.username : `Player ${winnerId}`;
   };
 
   return (
@@ -68,8 +89,19 @@ function GameOver({ winnerId, gameId, onBackToLobby }) {
         }}>
           {isWinner 
             ? 'Congratulations! You sunk all enemy ships!' 
-            : `Player ${winnerId} won this battle`}
+            : `${getWinnerName()} won this battle`}
         </p>
+
+        {/* Debug Info */}
+        {!loading && (
+          <div style={{
+            fontSize: '12px',
+            color: '#9ca3af',
+            marginBottom: '20px',
+          }}>
+            Winner ID: {winnerId} | Your ID: {player?.playerId} | Is Winner: {isWinner ? 'Yes' : 'No'}
+          </div>
+        )}
 
         {/* Stats Display */}
         {loading ? (
@@ -107,7 +139,7 @@ function GameOver({ winnerId, gameId, onBackToLobby }) {
                   fontWeight: 'bold',
                   color: '#667eea',
                 }}>
-                  {stats.total_games || 0}
+                  {stats.games_played || 0}
                 </div>
                 <div style={{
                   fontSize: '14px',
@@ -124,7 +156,7 @@ function GameOver({ winnerId, gameId, onBackToLobby }) {
                   fontWeight: 'bold',
                   color: '#10b981',
                 }}>
-                  {stats.total_wins || 0}
+                  {stats.wins || 0}
                 </div>
                 <div style={{
                   fontSize: '14px',
@@ -141,7 +173,7 @@ function GameOver({ winnerId, gameId, onBackToLobby }) {
                   fontWeight: 'bold',
                   color: '#ef4444',
                 }}>
-                  {stats.total_losses || 0}
+                  {stats.losses || 0}
                 </div>
                 <div style={{
                   fontSize: '14px',
@@ -154,7 +186,7 @@ function GameOver({ winnerId, gameId, onBackToLobby }) {
             </div>
 
             {/* Win Rate */}
-            {stats.total_games > 0 && (
+            {stats.games_played > 0 && (
               <div style={{ marginTop: '20px' }}>
                 <div style={{
                   fontSize: '16px',
@@ -173,7 +205,7 @@ function GameOver({ winnerId, gameId, onBackToLobby }) {
                   <div style={{
                     height: '100%',
                     background: 'linear-gradient(90deg, #10b981, #34d399)',
-                    width: `${((stats.total_wins / stats.total_games) * 100).toFixed(1)}%`,
+                    width: `${((stats.wins / stats.games_played) * 100).toFixed(1)}%`,
                     transition: 'width 1s ease-out',
                     display: 'flex',
                     alignItems: 'center',
@@ -184,7 +216,7 @@ function GameOver({ winnerId, gameId, onBackToLobby }) {
                       fontSize: '14px',
                       fontWeight: 'bold',
                     }}>
-                      {((stats.total_wins / stats.total_games) * 100).toFixed(1)}%
+                      {((stats.wins / stats.games_played) * 100).toFixed(1)}%
                     </span>
                   </div>
                 </div>
@@ -192,7 +224,7 @@ function GameOver({ winnerId, gameId, onBackToLobby }) {
             )}
 
             {/* Accuracy */}
-            {stats.accuracy_percentage !== undefined && (
+            {stats.accuracy !== undefined && (
               <div style={{ marginTop: '20px' }}>
                 <div style={{
                   fontSize: '16px',
@@ -211,7 +243,7 @@ function GameOver({ winnerId, gameId, onBackToLobby }) {
                   <div style={{
                     height: '100%',
                     background: 'linear-gradient(90deg, #667eea, #764ba2)',
-                    width: `${stats.accuracy_percentage.toFixed(1)}%`,
+                    width: `${(stats.accuracy * 100).toFixed(1)}%`,
                     transition: 'width 1s ease-out',
                     display: 'flex',
                     alignItems: 'center',
@@ -222,7 +254,7 @@ function GameOver({ winnerId, gameId, onBackToLobby }) {
                       fontSize: '14px',
                       fontWeight: 'bold',
                     }}>
-                      {stats.accuracy_percentage.toFixed(1)}%
+                      {(stats.accuracy * 100).toFixed(1)}%
                     </span>
                   </div>
                 </div>

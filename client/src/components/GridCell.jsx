@@ -102,7 +102,10 @@ function GridCell({
 
   const handleClick = () => {
     if (!disabled && onClick) {
+      console.log('GridCell clicked:', { row, col, disabled, state }); // Debug
       onClick(row, col);
+    } else {
+      console.log('GridCell click blocked:', { row, col, disabled, hasOnClick: !!onClick, state }); // Debug
     }
   };
 

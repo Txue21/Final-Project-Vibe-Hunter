@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getGame, placeShips } from '../services/api';
-import { getPlayer } from '../utils/localstorage';
+import { getPlayer } from '../utils/localStorage';
 import { formatCoordinate, isValidCoordinate, isSameCoordinate } from '../utils/gridHelpers';
 import { validateShipPlacement } from '../utils/gameHelpers';
 

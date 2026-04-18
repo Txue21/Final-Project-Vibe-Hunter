@@ -238,52 +238,66 @@ function Lobby({ onJoinGame }) {
                 </div>
               ) : (
                 <div style={styles.gamesList}>
-                  {games.map(game => (
-                    <div key={game.game_id} style={styles.gameCard}>
-                      <div style={styles.gameCardHeader}>
-                        <div>
-                          <h3 style={styles.gameTitle}>Game #{game.game_id}</h3>
-                          <p style={styles.gameInfo}>
-                            📏 {game.grid_size}×{game.grid_size} | 
-                            👥 {game.active_players || 0}/{game.max_players} players
-                          </p>
+                  {games.map(game => {
+                    // Normalize status - handle any case variations
+                    const normalizedStatus = game.status?.toLowerCase() || 'waiting';
+                    const isWaiting = normalizedStatus.includes('waiting');
+                    const isActive = normalizedStatus === 'active' || normalizedStatus === 'playing';
+                    const isFinished = normalizedStatus === 'finished';
+                    
+                    // Format status for display
+                    const displayStatus = isWaiting ? 'WAITING' : 
+                                        isActive ? 'ACTIVE' : 
+                                        isFinished ? 'FINISHED' : 
+                                        normalizedStatus.toUpperCase();
+                    
+                    return (
+                      <div key={game.game_id} style={styles.gameCard}>
+                        <div style={styles.gameCardHeader}>
+                          <div>
+                            <h3 style={styles.gameTitle}>Game #{game.game_id}</h3>
+                            <p style={styles.gameInfo}>
+                              📏 {game.grid_size}×{game.grid_size} | 
+                              👥 {game.active_players || 0}/{game.max_players} players
+                            </p>
+                          </div>
+                          <span style={{
+                            ...styles.badge,
+                            backgroundColor: 
+                              isWaiting ? '#f59e0b' :
+                              isActive ? '#10b981' : '#6b7280'
+                          }}>
+                            {displayStatus}
+                          </span>
                         </div>
-                        <span style={{
-                          ...styles.badge,
-                          backgroundColor: 
-                            game.status === 'waiting' ? '#f59e0b' :
-                            game.status === 'active' ? '#10b981' : '#6b7280'
-                        }}>
-                          {game.status}
-                        </span>
+
+                        {isWaiting && (
+                          <button
+                            onClick={() => handleJoinGame(game.game_id)}
+                            disabled={loading}
+                            style={styles.joinBtn}
+                          >
+                            ➡️ Join Game
+                          </button>
+                        )}
+
+                        {isActive && (
+                          <button
+                            onClick={() => onJoinGame(game.game_id)}
+                            style={styles.viewBtn}
+                          >
+                            👁️ View Game
+                          </button>
+                        )}
+
+                        {isFinished && (
+                          <button style={styles.finishedBtn} disabled>
+                            ✅ Game Over
+                          </button>
+                        )}
                       </div>
-
-                      {game.status === 'waiting' && (
-                        <button
-                          onClick={() => handleJoinGame(game.game_id)}
-                          disabled={loading}
-                          style={styles.joinBtn}
-                        >
-                          ➡️ Join Game
-                        </button>
-                      )}
-
-                      {game.status === 'active' && (
-                        <button
-                          onClick={() => onJoinGame(game.game_id)}
-                          style={styles.viewBtn}
-                        >
-                          👁️ View Game
-                        </button>
-                      )}
-
-                      {game.status === 'finished' && (
-                        <button style={styles.finishedBtn} disabled>
-                          ✅ Game Over
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

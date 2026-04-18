@@ -33,6 +33,7 @@ function MoveHistory({ gameId }) {
     }
 
     if (data) {
+      console.log('Fetched moves:', data); // Debug log
       // Sort by timestamp (newest last)
       const sortedMoves = [...data].sort((a, b) => 
         new Date(a.timestamp) - new Date(b.timestamp)
@@ -160,14 +161,24 @@ function MoveHistory({ gameId }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {displayedMoves.map((move, index) => {
-              const coord = formatCoordinate(move.row_index, move.col_index);
-              const outcome = move.outcome || 'unknown';
+              // Defensive checks for row and col
+              const hasValidCoords = move.row !== undefined && move.col !== undefined && 
+                                    move.row !== null && move.col !== null &&
+                                    !isNaN(move.row) && !isNaN(move.col);
+              
+              const coord = hasValidCoords ? formatCoordinate(move.row, move.col) : '??';
+              const outcome = move.result || 'unknown';
               const icon = getMoveIcon(outcome);
               const color = getMoveColor(outcome);
+              
+              // Use usernames if available, fallback to player IDs
+              // Ensure we always show something meaningful
+              const playerName = move.player_username || (move.player_id ? `Player ${move.player_id}` : 'Unknown');
+              const targetName = move.target_username || (move.target_player_id ? `Player ${move.target_player_id}` : 'Unknown');
 
               return (
                 <div 
-                  key={move.id || index}
+                  key={move.move_id || index}
                   style={{
                     padding: '12px',
                     background: '#f9fafb',
@@ -180,7 +191,7 @@ function MoveHistory({ gameId }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     {/* Move Description */}
                     <div style={{ flex: 1 }}>
-                      <span style={{ fontWeight: 'bold' }}>Player {move.player_id}</span>
+                      <span style={{ fontWeight: 'bold' }}>{playerName}</span>
                       {' '}fired at{' '}
                       <span style={{ 
                         fontWeight: 'bold', 
@@ -191,7 +202,8 @@ function MoveHistory({ gameId }) {
                       }}>
                         {coord}
                       </span>
-                      {' '}on Player {move.target_player_id}
+                      {' '}on{' '}
+                      <span style={{ fontWeight: 'bold' }}>{targetName}</span>
                     </div>
 
                     {/* Outcome Badge */}

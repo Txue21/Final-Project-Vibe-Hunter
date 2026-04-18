@@ -39,9 +39,10 @@ if (!$player) {
     forbidden('Invalid player ID');
 }
 
-// Check game status
-if ($game['status'] !== 'waiting') {
-    badRequest('Game is not accepting new players');
+// Check game status - accept 'waiting' or any variation with 'waiting' in it
+$status = strtolower(trim($game['status']));
+if ($status !== 'waiting' && strpos($status, 'waiting') === false && $status !== 'setup') {
+    badRequest('Game is not accepting new players (status: ' . $game['status'] . ')');
 }
 
 // Check if player already in game

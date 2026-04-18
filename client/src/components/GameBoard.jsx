@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getGame, getMoves, fireMissile } from '../services/api';
-import { getPlayer } from '../utils/localstorage';
+import { getPlayer } from '../utils/localStorage';
 import { formatCoordinate } from '../utils/gridHelpers';
 import { getCellState, isPlayersTurn, getWinner } from '../utils/gameHelpers';
 import GridCell from './GridCell';
@@ -12,7 +12,6 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
   const [loading, setLoading] = useState(true);
   const [firing, setFiring] = useState(false);
   const [error, setError] = useState('');
-  const [selectedCoordinate, setSelectedCoordinate] = useState({ row: 0, col: 0 });
   
   const player = getPlayer();
   const [myTurnOrder, setMyTurnOrder] = useState(null);
@@ -59,7 +58,7 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
     setLoading(false);
   };
 
-  const handleFire = async () => {
+  const handleFire = async (row, col) => {
     if (firing) return;
     
     setFiring(true);
@@ -68,14 +67,14 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
     const { data, error: apiError } = await fireMissile(
       gameId, 
       player.playerId, 
-      selectedCoordinate.row, 
-      selectedCoordinate.col
+      row, 
+      col
     );
 
     if (data) {
       // Show result
       const resultMsg = data.result === 'hit' ? '🎯 HIT!' : '💨 MISS!';
-      alert(`${resultMsg}\n\nFired at ${formatCoordinate(selectedCoordinate.row, selectedCoordinate.col)}`);
+      alert(`${resultMsg}\n\nFired at ${formatCoordinate(row, col)}`);
       
       // Check if someone won
       if (data.game_status === 'finished' && data.winner_id) {
@@ -97,6 +96,7 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
     if (!game) return null;
 
     const ships = isMyBoard && boardPlayer.ships ? boardPlayer.ships : [];
+    const canClick = !isMyBoard && isMyTurn && !firing && !boardPlayer.is_eliminated;
     
     return (
       <div style={styles.singleBoard}>
@@ -150,7 +150,8 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
                       col={col}
                       state={cellState}
                       size={35}
-                      disabled={true}
+                      disabled={!canClick}
+                      onClick={canClick ? () => handleFire(row, col) : undefined}
                     />
                   );
                 })}
@@ -191,6 +192,16 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
   const isMyTurn = myTurnOrder !== null && isPlayersTurn(game.current_turn_index, myTurnOrder);
   const currentTurnPlayer = game.players?.find(p => p.turn_order === game.current_turn_index);
 
+  // Debug logging
+  console.log('Turn Debug:', {
+    myPlayerId: player.playerId,
+    myTurnOrder,
+    currentTurnIndex: game.current_turn_index,
+    isMyTurn,
+    currentTurnPlayer,
+    allPlayers: game.players
+  });
+
   return (
     <div style={styles.container}>
       <div style={styles.content}>
@@ -216,64 +227,15 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
           }}
         >
           {isMyTurn ? (
-            <span>🎯 YOUR TURN! Fire at the coordinates below</span>
+            <span>🎯 YOUR TURN! Click on an opponent's board to fire</span>
           ) : (
             <span>⏳ Waiting for {currentTurnPlayer?.username || `Player ${currentTurnPlayer?.player_id}`}...</span>
           )}
         </div>
 
-        {/* Firing Controls */}
-        {isMyTurn && (
-          <div style={styles.firingControls}>
-            <div style={styles.coordinateInputs}>
-              <div>
-                <label style={styles.label}>Row:</label>
-                <select
-                  value={selectedCoordinate.row}
-                  onChange={(e) => setSelectedCoordinate({ ...selectedCoordinate, row: parseInt(e.target.value) })}
-                  style={styles.select}
-                  disabled={firing}
-                >
-                  {Array.from({ length: game.grid_size }, (_, i) => (
-                    <option key={i} value={i}>
-                      {String.fromCharCode(65 + i)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={styles.label}>Column:</label>
-                <select
-                  value={selectedCoordinate.col}
-                  onChange={(e) => setSelectedCoordinate({ ...selectedCoordinate, col: parseInt(e.target.value) })}
-                  style={styles.select}
-                  disabled={firing}
-                >
-                  {Array.from({ length: game.grid_size }, (_, i) => (
-                    <option key={i} value={i}>
-                      {i + 1}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                onClick={handleFire}
-                disabled={firing}
-                style={{
-                  ...styles.fireBtn,
-                  opacity: firing ? 0.6 : 1,
-                }}
-              >
-                {firing ? '⏳ Firing...' : `🎯 Fire at ${formatCoordinate(selectedCoordinate.row, selectedCoordinate.col)}`}
-              </button>
-            </div>
-
-            {error && (
-              <div style={styles.errorMessage}>⚠️ {error}</div>
-            )}
-          </div>
+        {/* Error Message */}
+        {error && (
+          <div style={styles.errorMessage}>⚠️ {error}</div>
         )}
 
         {/* Main Content: Boards + Move History */}
