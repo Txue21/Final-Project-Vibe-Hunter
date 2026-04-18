@@ -30,22 +30,26 @@ if (!$game) {
 try {
     $stmt = $pdo->prepare("
         SELECT 
-            move_id,
-            game_id,
-            player_id,
-            target_player_id,
-            row,
-            col,
-            result,
-            timestamp
-        FROM Moves
-        WHERE game_id = ?
-        ORDER BY timestamp ASC, move_id ASC
+            m.move_id,
+            m.game_id,
+            m.player_id,
+            m.target_player_id,
+            m.row,
+            m.col,
+            m.result,
+            m.timestamp,
+            p1.username as player_username,
+            p2.username as target_username
+        FROM Moves m
+        JOIN Players p1 ON m.player_id = p1.player_id
+        JOIN Players p2 ON m.target_player_id = p2.player_id
+        WHERE m.game_id = ?
+        ORDER BY m.timestamp ASC, m.move_id ASC
     ");
     $stmt->execute([$gameId]);
     $moves = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // FIX: Cast player_id and target_player_id to int in response
+    // Format moves with usernames
     $formattedMoves = array_map(function($move) {
         return [
             'move_id'          => (int)$move['move_id'],
@@ -54,7 +58,9 @@ try {
             'row'              => (int)$move['row'],
             'col'              => (int)$move['col'],
             'result'           => $move['result'],
-            'timestamp'        => $move['timestamp']
+            'timestamp'        => $move['timestamp'],
+            'player_username'  => $move['player_username'],
+            'target_username'  => $move['target_username']
         ];
     }, $moves);
     
