@@ -113,3 +113,12 @@ export const getAllPlayers = async () => {
     return handleError(error);
   }
 };
+
+export const updatePlayer = async (playerId, data) => {
+  try {
+    const response = await axios.patch(`${API_BASE}/players/${playerId}`, data);
+    return handleResponse(response);
+  } catch (error) {
+    return handleError(error);
+  }
+};

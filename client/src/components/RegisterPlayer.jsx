@@ -27,6 +27,11 @@ function RegisterPlayer({ onRegisterSuccess }) {
       return;
     }
 
+    if (username.length > 12) {
+      setError('Username must be no longer than 12 characters');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
@@ -55,7 +60,8 @@ function RegisterPlayer({ onRegisterSuccess }) {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your username"
+              placeholder="Enter your username (3–12 chars)"
+              maxLength={12}
               style={styles.input}
               disabled={loading}
             />

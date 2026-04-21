@@ -138,17 +138,18 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             
             // Get ships for this player
             $stmt = $pdo->prepare("
-                SELECT row, col, is_sunk 
-                FROM Ships 
+                SELECT row, col, group_id, is_sunk
+                FROM Ships
                 WHERE game_id = ? AND player_id = ?
             ");
             $stmt->execute([$gameId, $player['player_id']]);
             $ships = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
             foreach ($ships as &$ship) {
-                $ship['row'] = (int)$ship['row'];
-                $ship['col'] = (int)$ship['col'];
-                $ship['is_sunk'] = (bool)$ship['is_sunk'];
+                $ship['row']      = (int)$ship['row'];
+                $ship['col']      = (int)$ship['col'];
+                $ship['group_id'] = (int)$ship['group_id'];
+                $ship['is_sunk']  = (bool)$ship['is_sunk'];
             }
             
             $player['ships'] = $ships;

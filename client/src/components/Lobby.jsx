@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { getAllGames, createGame, joinGame, getPlayerStats, getAllPlayers } from '../services/api';
+import { getAllGames, createGame, joinGame, getPlayerStats, getAllPlayers, updatePlayer } from '../services/api';
 import { getPlayer, clearPlayer } from '../utils/localStorage';
 
-function Lobby({ onJoinGame }) {
+function Lobby({ onJoinGame, onViewGame }) {
   const [games, setGames] = useState([]);
   const [stats, setStats] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -10,6 +10,7 @@ function Lobby({ onJoinGame }) {
   const [error, setError] = useState('');
   const [gridSize, setGridSize] = useState(8);
   const [maxPlayers, setMaxPlayers] = useState(3);
+  const [hideUsername, setHideUsername] = useState(false);
   
   const player = getPlayer();
 
@@ -32,7 +33,10 @@ function Lobby({ onJoinGame }) {
   const fetchStats = async () => {
     if (!player) return;
     const { data } = await getPlayerStats(player.playerId);
-    if (data) setStats(data);
+    if (data) {
+      setStats(data);
+      setHideUsername(data.hide_username || false);
+    }
   };
 
   const fetchLeaderboard = async () => {
@@ -50,6 +54,12 @@ function Lobby({ onJoinGame }) {
     }
   };
 
+  const handleToggleAnonymity = async (newValue) => {
+    setHideUsername(newValue);
+    await updatePlayer(player.playerId, { hide_username: newValue });
+    fetchLeaderboard();
+  };
+
   const handleCreateGame = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -59,10 +69,9 @@ function Lobby({ onJoinGame }) {
     const { data, error: apiError } = await createGame(gridSize, maxPlayers, player.playerId);
 
     if (data) {
-      alert(`Game ${data.game_id} created! You've been automatically added.`);
       fetchGames();
       // Creator is automatically added, so navigate to ship placement
-      setTimeout(() => onJoinGame(data.game_id), 500);
+      setTimeout(() => onJoinGame(data.game_id), 300);
     } else {
       setError(apiError);
     }
@@ -74,9 +83,8 @@ function Lobby({ onJoinGame }) {
     setError('');
     const { data, error: apiError } = await joinGame(gameId, player.playerId);
     if (data) {
-      alert(`Joined game ${gameId}!`);
       fetchGames();
-      setTimeout(() => onJoinGame(gameId), 500);
+      setTimeout(() => onJoinGame(gameId), 300);
     } else {
       setError(apiError);
     }
@@ -84,10 +92,8 @@ function Lobby({ onJoinGame }) {
   };
 
   const handleLogout = () => {
-    if (confirm('Are you sure you want to logout?')) {
-      clearPlayer();
-      window.location.reload();
-    }
+    clearPlayer();
+    window.location.reload();
   };
 
   return (
@@ -99,7 +105,12 @@ function Lobby({ onJoinGame }) {
             <h1 style={styles.title}>🎮 Battleship Lobby</h1>
             <p style={styles.welcomeText}>Welcome, <strong>{player?.username}</strong>!</p>
           </div>
-          <button onClick={handleLogout} style={styles.logoutBtn}>
+          <button
+            onClick={handleLogout}
+            style={styles.logoutBtn}
+            onMouseEnter={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = '#667eea'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'white'; }}
+          >
             Logout
           </button>
         </div>
@@ -185,6 +196,40 @@ function Lobby({ onJoinGame }) {
                 </div>
               ) : (
                 <p style={styles.noStats}>🎲 No stats yet - create your first game!</p>
+              )}
+
+              {stats && (
+                <div style={{ marginTop: '16px', borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
+                  <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px', fontWeight: '600' }}>
+                    Leaderboard display:
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => hideUsername && handleToggleAnonymity(false)}
+                      style={{
+                        padding: '6px 14px', borderRadius: '20px', border: 'none',
+                        cursor: hideUsername ? 'pointer' : 'default',
+                        background: !hideUsername ? '#667eea' : '#e5e7eb',
+                        color: !hideUsername ? 'white' : '#6b7280',
+                        fontWeight: '600', fontSize: '13px',
+                      }}
+                    >
+                      👤 My Username
+                    </button>
+                    <button
+                      onClick={() => !hideUsername && handleToggleAnonymity(true)}
+                      style={{
+                        padding: '6px 14px', borderRadius: '20px', border: 'none',
+                        cursor: !hideUsername ? 'pointer' : 'default',
+                        background: hideUsername ? '#667eea' : '#e5e7eb',
+                        color: hideUsername ? 'white' : '#6b7280',
+                        fontWeight: '600', fontSize: '13px',
+                      }}
+                    >
+                      🕵️ Anonymous
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -283,7 +328,7 @@ function Lobby({ onJoinGame }) {
 
                         {isActive && (
                           <button
-                            onClick={() => onJoinGame(game.game_id)}
+                            onClick={() => onViewGame(game.game_id)}
                             style={styles.viewBtn}
                           >
                             👁️ View Game
@@ -349,11 +394,7 @@ const styles = {
     cursor: 'pointer',
     fontSize: '16px',
     fontWeight: '600',
-    transition: 'all 0.3s',
-    ':hover': {
-      background: 'white',
-      color: '#667eea',
-    }
+    transition: 'background 0.2s, color 0.2s',
   },
   mainGrid: {
     display: 'grid',

@@ -92,17 +92,6 @@ function GameOver({ winnerId, gameId, onBackToLobby }) {
             : `${getWinnerName()} won this battle`}
         </p>
 
-        {/* Debug Info */}
-        {!loading && (
-          <div style={{
-            fontSize: '12px',
-            color: '#9ca3af',
-            marginBottom: '20px',
-          }}>
-            Winner ID: {winnerId} | Your ID: {player?.playerId} | Is Winner: {isWinner ? 'Yes' : 'No'}
-          </div>
-        )}
-
         {/* Stats Display */}
         {loading ? (
           <div style={{

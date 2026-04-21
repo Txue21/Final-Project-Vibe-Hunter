@@ -19,6 +19,9 @@ RewriteRule ^api/players/?$ api/players.php [L]
 # GET /api/players/{id}/stats
 RewriteRule ^api/players/([^/]+)/stats/?$ api/players.php [L]
 
+# PATCH /api/players/{id}
+RewriteRule ^api/players/([^/]+)/?$ api/players.php [L]
+
 # Game endpoints
 # POST /api/games (create game)
 # GET /api/games/{id} (get game state)
@@ -38,9 +41,6 @@ RewriteRule ^api/games/([0-9]+)/fire/?$ api/games/fire.php [L]
 RewriteRule ^api/games/([0-9]+)/moves/?$ api/games/moves.php [L]
 
 # Test mode endpoints
-# GET /api/test/debug (temporary debug endpoint)
-RewriteRule ^api/test/debug/?$ api/test/debug.php [L]
-
 # POST /api/test/games/{id}/restart
 RewriteRule ^api/test/games/([0-9]+)/restart/?$ api/test/games/restart.php [L]
 

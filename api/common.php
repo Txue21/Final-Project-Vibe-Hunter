@@ -125,42 +125,68 @@ function isValidCoordinate($row, $col, $gridSize) {
         && $col >= 0 && $col < $gridSize;
 }
 
+/**
+ * Validate multi-size ship placement.
+ * Expects ships as [{start_row, start_col, size, orientation}, ...].
+ * Requires exactly 3 ships with sizes 3, 4, 5 (one of each).
+ * Returns [true, null, $expandedCells] on success where each cell is {row, col, group_id}.
+ * Returns [false, $errorMessage, null] on failure.
+ */
 function validateShips($ships, $gridSize) {
-    // Ships must be an array
     if (!is_array($ships) || count($ships) === 0) {
-        return [false, 'Ships array is required'];
+        return [false, 'Ships array is required', null];
     }
-    
-    // Validate each ship and collect all positions
-    $positions = [];
-    foreach ($ships as $ship) {
-        // Each ship must have row and col
-        if (!isset($ship['row']) || !isset($ship['col'])) {
-            return [false, 'Each ship must have row and col'];
-        }
-        
-        $row = (int)$ship['row'];
-        $col = (int)$ship['col'];
-        
-        // Check coordinates are within grid bounds
-        if (!isValidCoordinate($row, $col, $gridSize)) {
-            return [false, "Coordinate [$row, $col] is out of bounds for grid size $gridSize"];
-        }
-        
-        // Check for overlapping positions
-        $pos = "$row,$col";
-        if (in_array($pos, $positions)) {
-            return [false, "Ships overlap at position [$row, $col]"];
-        }
-        $positions[] = $pos;
+
+    if (count($ships) !== 3) {
+        return [false, 'Must place exactly 3 ships', null];
     }
-    
-    // Must have exactly 3 ship cells total
-    if (count($positions) !== 3) {
-        return [false, "Must place exactly 3 ship cells (found " . count($positions) . ")"];
+
+    // Sizes must be exactly {3, 4, 5} — one of each
+    $providedSizes = array_map(function($s) {
+        return isset($s['size']) ? (int)$s['size'] : 0;
+    }, $ships);
+    sort($providedSizes);
+    if ($providedSizes !== [3, 4, 5]) {
+        return [false, 'Ships must have sizes 3, 4, and 5 (one of each)', null];
     }
-    
-    return [true, null];
+
+    $expandedCells = [];
+    $allPositions  = [];
+
+    foreach ($ships as $groupIndex => $ship) {
+        if (!isset($ship['start_row']) || !isset($ship['start_col'])
+            || !isset($ship['size'])    || !isset($ship['orientation'])) {
+            return [false, 'Each ship must have start_row, start_col, size, and orientation', null];
+        }
+
+        $startRow    = (int)$ship['start_row'];
+        $startCol    = (int)$ship['start_col'];
+        $size        = (int)$ship['size'];
+        $orientation = $ship['orientation'];
+        $groupId     = $groupIndex + 1; // 1, 2, or 3
+
+        if ($orientation !== 'horizontal' && $orientation !== 'vertical') {
+            return [false, 'Orientation must be horizontal or vertical', null];
+        }
+
+        for ($i = 0; $i < $size; $i++) {
+            $row = ($orientation === 'vertical')   ? $startRow + $i : $startRow;
+            $col = ($orientation === 'horizontal') ? $startCol + $i : $startCol;
+
+            if (!isValidCoordinate($row, $col, $gridSize)) {
+                return [false, "Ship extends out of grid bounds at [$row, $col]", null];
+            }
+
+            $pos = "$row,$col";
+            if (in_array($pos, $allPositions)) {
+                return [false, "Ships overlap at position [$row, $col]", null];
+            }
+            $allPositions[]  = $pos;
+            $expandedCells[] = ['row' => $row, 'col' => $col, 'group_id' => $groupId];
+        }
+    }
+
+    return [true, null, $expandedCells];
 }
 
 // ============================================

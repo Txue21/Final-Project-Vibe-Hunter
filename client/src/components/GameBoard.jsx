@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { getGame, getMoves, fireMissile } from '../services/api';
 import { getPlayer } from '../utils/localStorage';
 import { formatCoordinate } from '../utils/gridHelpers';
@@ -12,9 +12,25 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
   const [loading, setLoading] = useState(true);
   const [firing, setFiring] = useState(false);
   const [error, setError] = useState('');
+  const [turnFlash, setTurnFlash]   = useState(null); // { text, bg } — brief result in turn bar
+  const [sunkSplash, setSunkSplash] = useState(null); // { message, type } — center overlay
+
+  const sunkGroupsRef = useRef(new Set()); // tracks "playerId-groupId" keys already notified
   
   const player = getPlayer();
   const [myTurnOrder, setMyTurnOrder] = useState(null);
+
+  const SHIP_NAME_BY_SIZE = { 3: 'Submarine', 4: 'Destroyer', 5: 'Carrier' };
+
+  function flashTurn(text, bg) {
+    setTurnFlash({ text, bg });
+    setTimeout(() => setTurnFlash(null), 2000);
+  }
+
+  function showSunkSplash(message, type) {
+    setSunkSplash({ message, type });
+    setTimeout(() => setSunkSplash(null), 2500);
+  }
 
   useEffect(() => {
     fetchGameData();
@@ -37,6 +53,28 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
         const me = gameData.players.find(p => p.player_id === player.playerId);
         if (me) {
           setMyTurnOrder(me.turn_order);
+        }
+      }
+
+      // Detect newly sunk ships on own board (defender notification)
+      if (gameData.status === 'active' && gameData.players) {
+        const me = gameData.players.find(p => p.player_id === player.playerId);
+        if (me && me.ships) {
+          // Group cells by group_id
+          const groups = {};
+          for (const ship of me.ships) {
+            if (!groups[ship.group_id]) groups[ship.group_id] = [];
+            groups[ship.group_id].push(ship);
+          }
+          for (const [groupId, cells] of Object.entries(groups)) {
+            const allSunk = cells.every(c => c.is_sunk);
+            const key = `${me.player_id}-${groupId}`;
+            if (allSunk && !sunkGroupsRef.current.has(key)) {
+              sunkGroupsRef.current.add(key);
+              const shipName = SHIP_NAME_BY_SIZE[cells.length] || `${cells.length}-cell ship`;
+              showSunkSplash(`Your ${shipName} was sunk!`, 'defender');
+            }
+          }
         }
       }
       
@@ -72,10 +110,16 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
     );
 
     if (data) {
-      // Show result
-      const resultMsg = data.result === 'hit' ? '🎯 HIT!' : '💨 MISS!';
-      alert(`${resultMsg}\n\nFired at ${formatCoordinate(row, col)}`);
-      
+      // Ship sunk → center-screen overlay; regular hit/miss → flash in turn bar
+      if (data.ship_sunk) {
+        const shipName = SHIP_NAME_BY_SIZE[data.sunk_ship_size] || 'ship';
+        showSunkSplash(`You sunk their ${shipName}!`, 'attacker');
+      } else if (data.result === 'hit') {
+        flashTurn(`🎯 HIT! ${formatCoordinate(row, col)}`, '#d97706');
+      } else {
+        flashTurn(`💨 Miss at ${formatCoordinate(row, col)}`, '#4b5563');
+      }
+
       // Check if someone won
       if (data.game_status === 'finished' && data.winner_id) {
         setTimeout(() => {
@@ -126,7 +170,7 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
 
             {/* Rows */}
             {Array.from({ length: game.grid_size }, (_, row) => (
-              <>
+              <Fragment key={row}>
                 {/* Row header */}
                 <div key={`row-header-${row}`} style={styles.headerCell}>
                   {String.fromCharCode(65 + row)}
@@ -155,7 +199,7 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
                     />
                   );
                 })}
-              </>
+              </Fragment>
             ))}
           </div>
         </div>
@@ -192,18 +236,23 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
   const isMyTurn = myTurnOrder !== null && isPlayersTurn(game.current_turn_index, myTurnOrder);
   const currentTurnPlayer = game.players?.find(p => p.turn_order === game.current_turn_index);
 
-  // Debug logging
-  console.log('Turn Debug:', {
-    myPlayerId: player.playerId,
-    myTurnOrder,
-    currentTurnIndex: game.current_turn_index,
-    isMyTurn,
-    currentTurnPlayer,
-    allPlayers: game.players
-  });
-
   return (
     <div style={styles.container}>
+      {/* Center-screen ship-sunk splash (attacker = green, defender = red) */}
+      {sunkSplash && (
+        <div style={styles.sunkOverlay}>
+          <div style={{
+            ...styles.sunkCard,
+            ...(sunkSplash.type === 'attacker' ? styles.sunkCardAttacker : styles.sunkCardDefender),
+          }}>
+            <div style={styles.sunkIcon}>
+              {sunkSplash.type === 'attacker' ? '🎯' : '💥'}
+            </div>
+            <div style={styles.sunkText}>{sunkSplash.message}</div>
+          </div>
+        </div>
+      )}
+
       <div style={styles.content}>
         {/* Header */}
         <div style={styles.header}>
@@ -218,15 +267,18 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
           </button>
         </div>
 
-        {/* Turn Indicator */}
-        <div 
-          className={isMyTurn ? 'pulse-animation' : ''}
+        {/* Turn Indicator — also flashes hit/miss result briefly */}
+        <div
+          className={!turnFlash && isMyTurn ? 'pulse-animation' : ''}
           style={{
             ...styles.turnIndicator,
-            backgroundColor: isMyTurn ? '#10b981' : '#f59e0b',
+            backgroundColor: turnFlash ? turnFlash.bg : (isMyTurn ? '#10b981' : '#f59e0b'),
+            transition: 'background-color 0.3s',
           }}
         >
-          {isMyTurn ? (
+          {turnFlash ? (
+            <span>{turnFlash.text}</span>
+          ) : isMyTurn ? (
             <span>🎯 YOUR TURN! Click on an opponent's board to fire</span>
           ) : (
             <span>⏳ Waiting for {currentTurnPlayer?.username || `Player ${currentTurnPlayer?.player_id}`}...</span>
@@ -441,6 +493,41 @@ const styles = {
     maxWidth: '500px',
     margin: '100px auto',
     color: '#dc2626',
+  },
+  sunkOverlay: {
+    position: 'fixed',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'rgba(0,0,0,0.55)',
+    zIndex: 10000,
+    pointerEvents: 'none',
+  },
+  sunkCard: {
+    textAlign: 'center',
+    padding: '44px 64px',
+    borderRadius: '24px',
+    boxShadow: '0 24px 64px rgba(0,0,0,0.45)',
+    animation: 'sunkSplashIn 0.35s ease-out',
+  },
+  sunkCardAttacker: {
+    background: 'linear-gradient(135deg, #10b981, #047857)',
+    color: 'white',
+  },
+  sunkCardDefender: {
+    background: 'linear-gradient(135deg, #ef4444, #b91c1c)',
+    color: 'white',
+  },
+  sunkIcon: {
+    fontSize: '64px',
+    marginBottom: '12px',
+    lineHeight: 1,
+  },
+  sunkText: {
+    fontSize: '26px',
+    fontWeight: '800',
+    letterSpacing: '0.5px',
   },
 };
 

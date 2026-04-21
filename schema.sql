@@ -22,6 +22,8 @@ CREATE TABLE Players (
     losses INT DEFAULT 0,
     total_shots INT DEFAULT 0,
     total_hits INT DEFAULT 0,
+    hide_username TINYINT(1) NOT NULL DEFAULT 0,
+    -- Run on existing DB: ALTER TABLE Players ADD COLUMN hide_username TINYINT(1) NOT NULL DEFAULT 0;
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -63,7 +65,8 @@ CREATE TABLE GamePlayers (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================
--- Ships Table (3 single-cell ships per player)
+-- Ships Table (3 ships per player: sizes 3, 4, 5 cells)
+-- Each cell is one row; group_id groups cells of the same ship (1, 2, or 3)
 -- ============================================
 CREATE TABLE Ships (
     ship_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -71,6 +74,7 @@ CREATE TABLE Ships (
     player_id INT NOT NULL,
     row INT NOT NULL,
     col INT NOT NULL,
+    group_id TINYINT NOT NULL DEFAULT 0,
     is_sunk BOOLEAN DEFAULT FALSE,
     FOREIGN KEY (game_id) REFERENCES Games(game_id) ON DELETE CASCADE,
     FOREIGN KEY (player_id) REFERENCES Players(player_id) ON DELETE CASCADE,

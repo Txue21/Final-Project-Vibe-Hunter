@@ -50,22 +50,22 @@ if ($gamePlayer['ships_placed']) {
     badRequest('Ships already placed');
 }
 
-// Validate ships
-list($valid, $error) = validateShips($ships, $game['grid_size']);
+// Validate ships — returns [valid, error, expandedCells]
+list($valid, $error, $expandedCells) = validateShips($ships, $game['grid_size']);
 if (!$valid) {
     badRequest($error);
 }
 
 try {
-    $gameStatus = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $ships) {
-        // Insert all ships
+    $gameStatus = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $expandedCells) {
+        // Insert all ship cells (each cell is one row; group_id links cells of the same ship)
         $stmt = $pdo->prepare("
-            INSERT INTO Ships (game_id, player_id, row, col, is_sunk)
-            VALUES (?, ?, ?, ?, FALSE)
+            INSERT INTO Ships (game_id, player_id, row, col, group_id, is_sunk)
+            VALUES (?, ?, ?, ?, ?, FALSE)
         ");
 
-        foreach ($ships as $ship) {
-            $stmt->execute([$gameId, $playerId, $ship['row'], $ship['col']]);
+        foreach ($expandedCells as $cell) {
+            $stmt->execute([$gameId, $playerId, $cell['row'], $cell['col'], $cell['group_id']]);
         }
 
         // Mark ships as placed for this player

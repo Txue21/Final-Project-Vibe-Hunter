@@ -16,9 +16,16 @@ function App() {
     setCurrentView('lobby');
   };
 
+  // Called after joining a waiting game → go to ship placement
   const handleJoinGame = (gameId) => {
     setCurrentGameId(gameId);
     setCurrentView('shipPlacement');
+  };
+
+  // Called when clicking "View Game" on an already-active game → go straight to board
+  const handleViewGame = (gameId) => {
+    setCurrentGameId(gameId);
+    setCurrentView('game');
   };
 
   const handlePlacementComplete = () => {
@@ -28,8 +35,6 @@ function App() {
   const handleGameOver = (winner) => {
     setWinnerId(winner);
     setCurrentView('gameOver');
-    // Show winner announcement
-    alert(`🏆 Game Over! ${winner === player.playerId ? 'You won!' : `Player ${winner} won!`}`);
   };
 
   const handleBackToLobby = () => {
@@ -74,7 +79,7 @@ function App() {
   }
 
   // Default - show lobby
-  return <Lobby onJoinGame={handleJoinGame} />;
+  return <Lobby onJoinGame={handleJoinGame} onViewGame={handleViewGame} />;
 }
 
 export default App;

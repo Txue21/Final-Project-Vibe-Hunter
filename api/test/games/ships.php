@@ -63,11 +63,13 @@ if (!$gamePlayer) {
     badRequest('Player is not in this game');
 }
 
-// Flatten ships to individual cells BEFORE validation
+// Flatten ships to individual cells, preserving group_id per ship
 $cells = [];
-foreach ($ships as $ship) {
+$allPositions = [];
+foreach ($ships as $shipIndex => $ship) {
+    $groupId = $shipIndex + 1; // each ship entry gets its own group
     if (isset($ship['coordinates'])) {
-        // New format: { "type": "destroyer", "coordinates": [[0,0],[0,1]] }
+        // Format: { "type": "destroyer", "coordinates": [[0,0],[0,1]] }
         if (!is_array($ship['coordinates'])) {
             badRequest('coordinates must be an array');
         }
@@ -75,21 +77,39 @@ foreach ($ships as $ship) {
             if (!is_array($coord) || count($coord) !== 2) {
                 badRequest('Each coordinate must be [row, col]');
             }
-            $cells[] = ['row' => (int)$coord[0], 'col' => (int)$coord[1]];
+            $row = (int)$coord[0];
+            $col = (int)$coord[1];
+            if (!isValidCoordinate($row, $col, $game['grid_size'])) {
+                badRequest("Ship coordinate [$row, $col] is out of bounds");
+            }
+            $pos = "$row,$col";
+            if (in_array($pos, $allPositions)) {
+                badRequest("Ships overlap at position [$row, $col]");
+            }
+            $allPositions[] = $pos;
+            $cells[] = ['row' => $row, 'col' => $col, 'group_id' => $groupId];
         }
     } else {
-        // Old format: { "row": 0, "col": 1 }
+        // Format: { "row": 0, "col": 1 }
         if (!isset($ship['row']) || !isset($ship['col'])) {
-            badRequest('Each ship must have row and col or coordinates');
+            badRequest('Each ship must have row and col, or coordinates');
         }
-        $cells[] = ['row' => (int)$ship['row'], 'col' => (int)$ship['col']];
+        $row = (int)$ship['row'];
+        $col = (int)$ship['col'];
+        if (!isValidCoordinate($row, $col, $game['grid_size'])) {
+            badRequest("Ship coordinate [$row, $col] is out of bounds");
+        }
+        $pos = "$row,$col";
+        if (in_array($pos, $allPositions)) {
+            badRequest("Ships overlap at position [$row, $col]");
+        }
+        $allPositions[] = $pos;
+        $cells[] = ['row' => $row, 'col' => $col, 'group_id' => $groupId];
     }
 }
 
-// Validate the flattened cells
-list($valid, $error) = validateShips($cells, $game['grid_size']);
-if (!$valid) {
-    badRequest($error);
+if (empty($cells)) {
+    badRequest('No ship cells provided');
 }
 
 try {
@@ -100,11 +120,11 @@ try {
         
         // Insert all ship cells
         $stmt = $pdo->prepare("
-            INSERT INTO Ships (game_id, player_id, row, col, is_sunk)
-            VALUES (?, ?, ?, ?, FALSE)
+            INSERT INTO Ships (game_id, player_id, row, col, group_id, is_sunk)
+            VALUES (?, ?, ?, ?, ?, FALSE)
         ");
         foreach ($cells as $cell) {
-            $stmt->execute([$gameId, $playerId, $cell['row'], $cell['col']]);
+            $stmt->execute([$gameId, $playerId, $cell['row'], $cell['col'], $cell['group_id']]);
         }
         
         // Mark ships as placed

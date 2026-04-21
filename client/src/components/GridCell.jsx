@@ -1,20 +1,19 @@
 // Reusable Grid Cell component for Battleship game
 import { useEffect, useState } from 'react';
 
-function GridCell({ 
-  row, 
-  col, 
-  state, 
-  size = 40, 
-  onClick, 
+function GridCell({
+  row,
+  col,
+  state,
+  size = 40,
+  onClick,
   disabled = false,
-  showCoordinate = false 
 }) {
   // state can be: 'empty', 'ship', 'hit', 'miss', 'sunk'
   const [prevState, setPrevState] = useState(state);
   const [animationClass, setAnimationClass] = useState('');
 
-  // Trigger animation when state changes to hit or miss
+  // Trigger animation when state changes to hit, miss, or sunk
   useEffect(() => {
     if (state !== prevState) {
       if (state === 'hit') {
@@ -30,7 +29,7 @@ function GridCell({
       setPrevState(state);
     }
   }, [state, prevState]);
-  
+
   const getCellStyle = () => {
     const baseStyle = {
       width: `${size}px`,
@@ -87,25 +86,17 @@ function GridCell({
 
   const getCellContent = () => {
     switch (state) {
-      case 'ship':
-        return '🚢';
-      case 'hit':
-        return '💥';
-      case 'miss':
-        return '✕';
-      case 'sunk':
-        return '💀';
-      default:
-        return showCoordinate ? `${String.fromCharCode(65 + row)}${col + 1}` : '';
+      case 'ship':  return '🚢';
+      case 'hit':   return '💥';
+      case 'miss':  return '✕';
+      case 'sunk':  return '💀';
+      default:      return '';
     }
   };
 
   const handleClick = () => {
     if (!disabled && onClick) {
-      console.log('GridCell clicked:', { row, col, disabled, state }); // Debug
       onClick(row, col);
-    } else {
-      console.log('GridCell click blocked:', { row, col, disabled, hasOnClick: !!onClick, state }); // Debug
     }
   };
 
@@ -124,6 +115,7 @@ function GridCell({
 
   return (
     <div
+      className={animationClass}
       style={getCellStyle()}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}

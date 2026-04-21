@@ -33,7 +33,6 @@ function MoveHistory({ gameId }) {
     }
 
     if (data) {
-      console.log('Fetched moves:', data); // Debug log
       // Sort by timestamp (newest last)
       const sortedMoves = [...data].sort((a, b) => 
         new Date(a.timestamp) - new Date(b.timestamp)

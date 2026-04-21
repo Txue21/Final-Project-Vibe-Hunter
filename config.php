@@ -32,10 +32,6 @@ ini_set('display_errors', 0);  // Changed to 0 for production
 ini_set('log_errors', 1);      // Log errors instead
 ini_set('error_log', __DIR__ . '/error_log.txt');
 
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
 /**
  * Check if TEST_MODE is enabled and validate password
  * @return bool True if test mode is enabled and password is valid
@@ -44,40 +40,15 @@ function isTestModeValid() {
     if (!TEST_MODE) {
         return false;
     }
-    
+
     // Try getallheaders() first
     $headers = getallheaders();
     $password = $headers['X-Test-Password'] ?? '';
-    
+
     // Fallback: LiteSpeed/Hostinger may not pass headers via getallheaders()
-    // Check $_SERVER with HTTP_ prefix instead
     if (empty($password)) {
         $password = $_SERVER['HTTP_X_TEST_PASSWORD'] ?? '';
     }
-    
-    return $password === TEST_PASSWORD;
-}
 
-/**
- * Generate UUID using MySQL UUID() function
- * Falls back to PHP uniqid if MySQL not available
- * @param PDO $pdo Database connection
- * @return string UUID
- */
-function generateUUID($pdo) {
-    try {
-        $stmt = $pdo->query("SELECT UUID() as uuid");
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $result['uuid'];
-    } catch (Exception $e) {
-        // Fallback to PHP uniqid (not RFC 4122 compliant but unique enough)
-        return sprintf(
-            '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
-            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
-            mt_rand(0, 0xffff),
-            mt_rand(0, 0x0fff) | 0x4000,
-            mt_rand(0, 0x3fff) | 0x8000,
-            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
-        );
-    }
+    return $password === TEST_PASSWORD;
 }
