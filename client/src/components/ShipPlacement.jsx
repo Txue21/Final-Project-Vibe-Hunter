@@ -1,313 +1,183 @@
-import { useState, useEffect, useRef, Fragment } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { getGame, placeShips } from '../services/api';
 import { getPlayer } from '../utils/localStorage';
-import { formatCoordinate } from '../utils/gridHelpers';
-import { validateShipPlacement } from '../utils/gameHelpers';
 
-const SHIPS_CONFIG = [
-  { id: 'ship3', size: 3, name: 'Submarine', color: '#3b82f6' },
-  { id: 'ship4', size: 4, name: 'Destroyer',  color: '#8b5cf6' },
-  { id: 'ship5', size: 5, name: 'Carrier',    color: '#f59e0b' },
+// Ship configs matching backend: sizes 3, 4, 5 — one of each
+const SHIP_CONFIGS = [
+  { size: 3, name: 'Destroyer',  emoji: '\u{1F6A4}', color: '#3b82f6', colorLight: '#dbeafe' },
+  { size: 4, name: 'Battleship', emoji: '\u{1F6A2}', color: '#8b5cf6', colorLight: '#ede9fe' },
+  { size: 5, name: 'Carrier',    emoji: '\u{1F6F3}', color: '#ef4444', colorLight: '#fee2e2' },
 ];
 
-function getShipCells(startRow, startCol, size, orientation) {
-  return Array.from({ length: size }, (_, i) => ({
-    row: orientation === 'vertical'   ? startRow + i : startRow,
-    col: orientation === 'horizontal' ? startCol + i : startCol,
-  }));
-}
-
-function ShipPlacement({ gameId, onPlacementComplete }) {
-  const [game, setGame]             = useState(null);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState('');
+function ShipPlacement({ gameId, onPlacementComplete, onBackToLobby }) {
+  const [game, setGame] = useState(null);
+  const [placedShips, setPlacedShips] = useState([]); // [{start_row, start_col, size, orientation}]
+  const [selectedSize, setSelectedSize] = useState(3);
+  const [orientation, setOrientation] = useState('horizontal');
+  const [hoveredCell, setHoveredCell] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
-  // Each ship mirrors SHIPS_CONFIG plus placement state
-  const [ships, setShips] = useState(
-    SHIPS_CONFIG.map(s => ({ ...s, start_row: null, start_col: null, orientation: 'horizontal' }))
-  );
-
-  // dragging: { shipId, size, orientation, color }
-  const [dragging, setDragging]       = useState(null);
-  const [hoverCell, setHoverCell]     = useState(null);
-  // selectedShipId: for tap-to-select + tap-to-place
-  const [selectedShipId, setSelectedShipId] = useState(null);
-
-  // grabOffset: which cell index within the ship's visual was mousedown'd
-  const grabOffsetRef = useRef(0);
+  const [placed, setPlaced] = useState(false);
 
   const player = getPlayer();
 
-  // ── Polling ────────────────────────────────────────────────────────────────
   useEffect(() => {
     fetchGameState();
     const interval = setInterval(fetchGameState, 3000);
     return () => clearInterval(interval);
   }, [gameId]);
 
-  // ── R key rotates during drag OR rotates selected ship ─────────────────────
+  // Auto-advance to next unplaced ship after placing one
   useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'r' || e.key === 'R') {
-        if (dragging) {
-          setDragging(d =>
-            d ? { ...d, orientation: d.orientation === 'horizontal' ? 'vertical' : 'horizontal' } : d
-          );
-        } else if (selectedShipId) {
-          setShips(prev =>
-            prev.map(s =>
-              s.id === selectedShipId
-                ? { ...s, orientation: s.orientation === 'horizontal' ? 'vertical' : 'horizontal' }
-                : s
-            )
-          );
-        }
+    const placedSizes = placedShips.map(s => s.size);
+    if (placedSizes.includes(selectedSize)) {
+      const next = SHIP_CONFIGS.find(c => !placedSizes.includes(c.size));
+      if (next) setSelectedSize(next.size);
+    }
+  }, [placedShips]);
+
+  // Space bar = flip orientation
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        setOrientation(o => o === 'horizontal' ? 'vertical' : 'horizontal');
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [dragging, selectedShipId]);
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
 
-  async function fetchGameState() {
+  const fetchGameState = async () => {
     const { data, error: apiError } = await getGame(gameId);
     if (data) {
       setGame(data);
       setLoading(false);
-      if (data.status === 'active') onPlacementComplete();
+      if (data.status === 'active') {
+        onPlacementComplete();
+      }
     } else {
       setError(apiError);
       setLoading(false);
     }
-  }
+  };
 
-  // ── Preview helpers ────────────────────────────────────────────────────────
-  function getPreview() {
-    if (!hoverCell || !game) return null;
-
-    // During drag, use dragging ship; otherwise use selected ship
-    let previewShipId, size, orientation;
-    if (dragging) {
-      previewShipId = dragging.shipId;
-      size          = dragging.size;
-      orientation   = dragging.orientation;
-    } else if (selectedShipId) {
-      const sel = ships.find(s => s.id === selectedShipId);
-      if (!sel) return null;
-      previewShipId = sel.id;
-      size          = sel.size;
-      orientation   = sel.orientation;
-    } else {
-      return null;
+  // Expand a ship into its individual cell coordinates
+  const getShipCells = (startRow, startCol, size, orient) => {
+    const cells = [];
+    for (let i = 0; i < size; i++) {
+      cells.push({
+        row: orient === 'vertical'   ? startRow + i : startRow,
+        col: orient === 'horizontal' ? startCol + i : startCol,
+      });
     }
+    return cells;
+  };
 
-    const offset = dragging ? grabOffsetRef.current : 0;
+  const fitsInGrid = (startRow, startCol, size, orient, gridSize) => {
+    if (orient === 'horizontal') return startCol + size <= gridSize && startRow >= 0 && startRow < gridSize;
+    return startRow + size <= gridSize && startCol >= 0 && startCol < gridSize;
+  };
 
-    const startRow = hoverCell.row - (orientation === 'vertical'   ? offset : 0);
-    const startCol = hoverCell.col - (orientation === 'horizontal' ? offset : 0);
-
-    const cells = getShipCells(startRow, startCol, size, orientation);
-
-    const allInBounds = cells.every(
-      c => c.row >= 0 && c.row < game.grid_size && c.col >= 0 && c.col < game.grid_size
+  const getOccupied = (ships = placedShips) => {
+    const set = new Set();
+    ships.forEach(ship =>
+      getShipCells(ship.start_row, ship.start_col, ship.size, ship.orientation)
+        .forEach(c => set.add(`${c.row},${c.col}`))
     );
+    return set;
+  };
 
-    const hasOverlap = cells.some(c =>
-      ships.some(
-        s =>
-          s.id !== previewShipId &&
-          s.start_row !== null &&
-          getShipCells(s.start_row, s.start_col, s.size, s.orientation).some(
-            sc => sc.row === c.row && sc.col === c.col
-          )
-      )
-    );
+  const handleCellClick = (row, col) => {
+    if (!game || placed) return;
 
-    return { cells, isValid: allInBounds && !hasOverlap, startRow, startCol };
-  }
-
-  function getCellInfo(row, col) {
-    for (const ship of ships) {
-      if (ship.start_row === null) continue;
-      const cells = getShipCells(ship.start_row, ship.start_col, ship.size, ship.orientation);
-      if (cells.some(c => c.row === row && c.col === col)) {
-        return { type: 'ship', ship };
-      }
-    }
-    const preview = getPreview();
-    if (preview && preview.cells.some(c => c.row === row && c.col === col)) {
-      return { type: 'preview', valid: preview.isValid };
-    }
-    return { type: 'empty' };
-  }
-
-  // ── Drag handlers ──────────────────────────────────────────────────────────
-  function handleDragStart(e, ship) {
-    setSelectedShipId(null); // Clear tap selection when dragging starts
-    // If ship was already placed, pick it back up
-    if (ship.start_row !== null) {
-      setShips(prev =>
-        prev.map(s => s.id === ship.id ? { ...s, start_row: null, start_col: null } : s)
+    // Click on an existing ship cell -> remove that ship
+    const occupied = getOccupied();
+    if (occupied.has(`${row},${col}`)) {
+      const idx = placedShips.findIndex(ship =>
+        getShipCells(ship.start_row, ship.start_col, ship.size, ship.orientation)
+          .some(c => c.row === row && c.col === col)
       );
-    }
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', ship.id);
-    setDragging({ shipId: ship.id, size: ship.size, orientation: ship.orientation, color: ship.color });
-  }
-
-  function handleDragEnd() {
-    setDragging(null);
-    setHoverCell(null);
-  }
-
-  function handleCellDragOver(e, row, col) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setHoverCell({ row, col });
-  }
-
-  function handleCellDrop(e, row, col) {
-    e.preventDefault();
-    if (!dragging || !game) return;
-
-    // Compute placement directly from drop coordinates (don't rely on hoverCell state)
-    const { size, orientation, shipId } = dragging;
-    const offset   = grabOffsetRef.current;
-    const startRow = row - (orientation === 'vertical'   ? offset : 0);
-    const startCol = col - (orientation === 'horizontal' ? offset : 0);
-    const cells    = getShipCells(startRow, startCol, size, orientation);
-
-    const allInBounds = cells.every(
-      c => c.row >= 0 && c.row < game.grid_size && c.col >= 0 && c.col < game.grid_size
-    );
-    const hasOverlap = cells.some(c =>
-      ships.some(
-        s =>
-          s.id !== shipId &&
-          s.start_row !== null &&
-          getShipCells(s.start_row, s.start_col, s.size, s.orientation).some(
-            sc => sc.row === c.row && sc.col === c.col
-          )
-      )
-    );
-    if (!allInBounds || hasOverlap) return;
-
-    setShips(prev =>
-      prev.map(s =>
-        s.id === shipId
-          ? { ...s, start_row: startRow, start_col: startCol, orientation }
-          : s
-      )
-    );
-    setDragging(null);
-    setHoverCell(null);
-    setError('');
-  }
-
-  // ── Tap-to-select + tap-to-place ───────────────────────────────────────────
-  function handleTrayShipClick(ship) {
-    if (submitting) return;
-    if (ship.start_row !== null) return; // Already placed; use Remove button instead
-    setSelectedShipId(prev => prev === ship.id ? null : ship.id);
-  }
-
-  function handleCellTap(row, col) {
-    if (!selectedShipId || !game || submitting) return;
-
-    const sel = ships.find(s => s.id === selectedShipId);
-    if (!sel) return;
-
-    const { size, orientation } = sel;
-    const cells = getShipCells(row, col, size, orientation);
-
-    const allInBounds = cells.every(
-      c => c.row >= 0 && c.row < game.grid_size && c.col >= 0 && c.col < game.grid_size
-    );
-    const hasOverlap = cells.some(c =>
-      ships.some(
-        s =>
-          s.id !== selectedShipId &&
-          s.start_row !== null &&
-          getShipCells(s.start_row, s.start_col, s.size, s.orientation).some(
-            sc => sc.row === c.row && sc.col === c.col
-          )
-      )
-    );
-
-    if (!allInBounds || hasOverlap) {
-      setError('Cannot place ship there — out of bounds or overlapping.');
-      setTimeout(() => setError(''), 2000);
+      if (idx >= 0) {
+        const removed = placedShips[idx];
+        setPlacedShips(placedShips.filter((_, i) => i !== idx));
+        setSelectedSize(removed.size);
+        setError('');
+      }
       return;
     }
 
-    setShips(prev =>
-      prev.map(s =>
-        s.id === selectedShipId
-          ? { ...s, start_row: row, start_col: col }
-          : s
-      )
-    );
-    setSelectedShipId(null);
-    setHoverCell(null);
+    if (placedShips.some(s => s.size === selectedSize)) {
+      setError(`${SHIP_CONFIGS.find(c => c.size === selectedSize)?.name} is already placed — click it to remove first.`);
+      return;
+    }
+
+    const cells = getShipCells(row, col, selectedSize, orientation);
+    if (!fitsInGrid(row, col, selectedSize, orientation, game.grid_size)) {
+      setError('Ship extends beyond the grid — try a different cell or flip orientation (Space).');
+      return;
+    }
+    if (cells.some(c => occupied.has(`${c.row},${c.col}`))) {
+      setError('Ships cannot overlap!');
+      return;
+    }
+
+    setPlacedShips([...placedShips, { start_row: row, start_col: col, size: selectedSize, orientation }]);
     setError('');
-  }
+  };
 
-  // ── Tray controls ──────────────────────────────────────────────────────────
-  function toggleOrientation(e, shipId) {
-    e.stopPropagation(); // Don't trigger tray ship click
-    setShips(prev =>
-      prev.map(s =>
-        s.id === shipId
-          ? { ...s, orientation: s.orientation === 'horizontal' ? 'vertical' : 'horizontal' }
-          : s
-      )
-    );
-    if (dragging && dragging.shipId === shipId) {
-      setDragging(d => ({
-        ...d,
-        orientation: d.orientation === 'horizontal' ? 'vertical' : 'horizontal',
-      }));
+  const handleSubmit = async () => {
+    if (placedShips.length !== 3) {
+      setError('Place all 3 ships first.');
+      return;
     }
-    if (selectedShipId === shipId) {
-      // Keep selection, just update orientation (already done above)
-    }
-  }
-
-  function removeShip(e, shipId) {
-    e.stopPropagation(); // Don't trigger tray ship click
-    setShips(prev => prev.map(s => s.id === shipId ? { ...s, start_row: null, start_col: null } : s));
-  }
-
-  // ── Submit ─────────────────────────────────────────────────────────────────
-  async function handleSubmit() {
-    const placed   = ships.filter(s => s.start_row !== null);
-    const shipData = placed.map(s => ({
-      start_row:   s.start_row,
-      start_col:   s.start_col,
-      size:        s.size,
-      orientation: s.orientation,
-    }));
-
-    const validation = validateShipPlacement(shipData, game.grid_size);
-    if (!validation.valid) { setError(validation.error); return; }
-
     setSubmitting(true);
     setError('');
-    const { data, error: apiError } = await placeShips(gameId, player.playerId, shipData);
-    if (!data) {
+    const { data, error: apiError } = await placeShips(gameId, player.playerId, placedShips);
+    if (data) {
+      setPlaced(true);
+    } else {
       setError(apiError);
       setSubmitting(false);
     }
-    // On success keep submitting=true; polling redirects when game starts
-  }
+  };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-  const placedCount = ships.filter(s => s.start_row !== null).length;
+  const handleClear = () => {
+    setPlacedShips([]);
+    setSelectedSize(3);
+    setError('');
+  };
+
+  // Compute preview cells for the hovered cell
+  const previewCells = (() => {
+    if (!hoveredCell || !game || placed || placedShips.some(s => s.size === selectedSize)) return [];
+    const cells = getShipCells(hoveredCell.row, hoveredCell.col, selectedSize, orientation);
+    if (!fitsInGrid(hoveredCell.row, hoveredCell.col, selectedSize, orientation, game.grid_size)) return [];
+    return cells;
+  })();
+
+  const previewValid = previewCells.length > 0 && !previewCells.some(c => getOccupied().has(`${c.row},${c.col}`));
+
+  // Per-cell visual data
+  const getCellDisplay = (row, col) => {
+    for (const ship of placedShips) {
+      const cells = getShipCells(ship.start_row, ship.start_col, ship.size, ship.orientation);
+      const idx = cells.findIndex(c => c.row === row && c.col === col);
+      if (idx >= 0) {
+        const cfg = SHIP_CONFIGS.find(c => c.size === ship.size);
+        return { type: 'placed', color: cfg.color, colorLight: cfg.colorLight, isHead: idx === 0 };
+      }
+    }
+    const inPreview = previewCells.some(c => c.row === row && c.col === col);
+    if (inPreview) return { type: 'preview', valid: previewValid };
+    return { type: 'empty' };
+  };
 
   if (loading) {
     return (
       <div style={styles.container}>
-        <div style={styles.card}><h2>Loading game...</h2></div>
+        <div style={styles.centerCard}><h2 style={{ color: '#374151' }}>Loading game...</h2></div>
       </div>
     );
   }
@@ -315,13 +185,14 @@ function ShipPlacement({ gameId, onPlacementComplete }) {
   if (!game) {
     return (
       <div style={styles.container}>
-        <div style={styles.card}>
-          <h2 style={{ color: '#dc2626' }}>Game not found</h2>
-          <p>{error}</p>
-        </div>
+        <div style={styles.centerCard}><h2 style={{ color: '#dc2626' }}>Game not found</h2><p>{error}</p></div>
       </div>
     );
   }
+
+  const placedSizes = placedShips.map(s => s.size);
+  const allPlaced = placedShips.length === 3;
+  const selectedCfg = SHIP_CONFIGS.find(c => c.size === selectedSize);
 
   return (
     <div style={styles.container}>
@@ -330,183 +201,163 @@ function ShipPlacement({ gameId, onPlacementComplete }) {
         {/* Header */}
         <div style={styles.header}>
           <div>
-            <h1 style={styles.title}>⚓ Place Your Fleet</h1>
+            <h1 style={styles.title}>⚓ Place Your Ships</h1>
             <p style={styles.subtitle}>Game #{gameId} · {game.grid_size}×{game.grid_size} Grid</p>
           </div>
-          <div style={styles.counter}>
-            <span style={styles.counterText}>{placedCount} / 3 Ships Placed</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={styles.counterBadge}>{placedShips.length} / 3 Ships Placed</div>
+            <button
+              onClick={() => { if (window.confirm('Leave this game and go back to lobby? You can rejoin later.')) onBackToLobby(); }}
+              style={styles.backBtn}
+            >
+              ← Lobby
+            </button>
           </div>
         </div>
 
-        {/* Main two-column layout */}
-        <div style={styles.mainLayout}>
-
-          {/* ── Ship tray ── */}
-          <div style={styles.tray}>
-            <h3 style={styles.trayTitle}>Your Fleet</h3>
-
-            {ships.map(ship => {
-              const isPlaced   = ship.start_row !== null;
-              const isSelected = selectedShipId === ship.id;
-              return (
-                <div
-                  key={ship.id}
-                  style={{
-                    ...styles.shipCard,
-                    opacity: isPlaced ? 0.55 : 1,
-                    cursor: isPlaced || submitting ? 'default' : 'pointer',
-                    boxShadow: isSelected
-                      ? `0 0 0 3px ${ship.color}, 0 4px 12px rgba(0,0,0,0.15)`
-                      : '0 1px 4px rgba(0,0,0,0.08)',
-                    border: isSelected
-                      ? `2px solid ${ship.color}`
-                      : '2px solid #e5e7eb',
-                  }}
-                  draggable={!isPlaced && !submitting}
-                  onDragStart={e => handleDragStart(e, ship)}
-                  onDragEnd={handleDragEnd}
-                  onClick={() => handleTrayShipClick(ship)}
-                >
-                  <div style={styles.shipCardHeader}>
-                    <span style={styles.shipName}>{ship.name}</span>
-                    <span style={styles.shipSizeBadge}>{ship.size}</span>
-                  </div>
-
-                  {/* Visual cells — mousedown records grab offset */}
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: ship.orientation === 'vertical' ? 'column' : 'row',
-                    gap: '3px',
-                    margin: '8px 0 6px 0',
-                  }}>
-                    {Array.from({ length: ship.size }, (_, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          width: 22, height: 22, borderRadius: 4, flexShrink: 0,
-                          backgroundColor: isPlaced ? '#9ca3af' : ship.color,
-                          border: '1px solid rgba(0,0,0,0.2)',
-                        }}
-                        onMouseDown={() => { grabOffsetRef.current = i; }}
-                      />
-                    ))}
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    {!isPlaced ? (
-                      <button
-                        style={styles.rotateBtn}
-                        onClick={e => toggleOrientation(e, ship.id)}
-                        title="Toggle orientation (or press R)"
-                      >
-                        ↻ {ship.orientation === 'horizontal' ? 'H' : 'V'}
-                      </button>
-                    ) : (
-                      <button
-                        style={styles.removeBtn}
-                        onClick={e => removeShip(e, ship.id)}
-                        disabled={submitting}
-                      >
-                        ✕ Remove
-                      </button>
-                    )}
-                  </div>
+        {/* Ship Selector */}
+        <div style={styles.shipSelectorRow}>
+          {SHIP_CONFIGS.map(cfg => {
+            const isPlaced   = placedSizes.includes(cfg.size);
+            const isSelected = selectedSize === cfg.size && !isPlaced;
+            return (
+              <button
+                key={cfg.size}
+                onClick={() => { if (!isPlaced) { setSelectedSize(cfg.size); setError(''); } }}
+                style={{
+                  ...styles.shipBtn,
+                  border: `3px solid ${isSelected ? cfg.color : isPlaced ? '#d1d5db' : '#9ca3af'}`,
+                  background: isPlaced ? '#f3f4f6' : isSelected ? cfg.colorLight : 'white',
+                  opacity: isPlaced ? 0.6 : 1,
+                  cursor: isPlaced ? 'not-allowed' : 'pointer',
+                  transform: isSelected ? 'scale(1.05)' : 'scale(1)',
+                }}
+                disabled={isPlaced}
+              >
+                <span style={{ fontSize: '28px' }}>{cfg.emoji}</span>
+                <span style={{ fontWeight: 'bold', color: cfg.color }}>{cfg.name}</span>
+                <div style={styles.shipSizeBar}>
+                  {Array.from({ length: cfg.size }, (_, i) => (
+                    <div key={i} style={{ ...styles.shipCell, background: cfg.color }} />
+                  ))}
                 </div>
+                <span style={{ fontSize: '12px', color: '#6b7280' }}>{cfg.size} cells</span>
+                {isPlaced && <span style={styles.placedBadge}>&#10003; Placed</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Orientation toggle */}
+        {!allPlaced && (
+          <div style={styles.orientationRow}>
+            <button
+              onClick={() => setOrientation(o => o === 'horizontal' ? 'vertical' : 'horizontal')}
+              style={styles.orientBtn}
+            >
+              {orientation === 'horizontal' ? '↔ Horizontal' : '↕ Vertical'}
+              <span style={{ fontSize: '12px', marginLeft: '8px', opacity: 0.75 }}>(Space to flip)</span>
+            </button>
+            {!placedSizes.includes(selectedSize) && (
+              <span style={styles.placingHint}>
+                Placing: <strong>{selectedCfg?.emoji} {selectedCfg?.name}</strong> ({selectedCfg?.size} cells, {orientation})
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Grid */}
+        <div style={styles.gridContainer}>
+          <div style={{ ...styles.grid, gridTemplateColumns: `40px repeat(${game.grid_size}, 40px)` }}>
+            <div style={styles.cornerCell} />
+            {Array.from({ length: game.grid_size }, (_, i) => (
+              <div key={`col-${i}`} style={styles.headerCell}>{i + 1}</div>
+            ))}
+            {Array.from({ length: game.grid_size }, (_, row) => (
+              <>
+                <div key={`rh-${row}`} style={styles.headerCell}>{String.fromCharCode(65 + row)}</div>
+                {Array.from({ length: game.grid_size }, (_, col) => {
+                  const display = getCellDisplay(row, col);
+                  let bg = '#f3f4f6';
+                  let cursor = placed ? 'default' : 'pointer';
+
+                  if (display.type === 'placed') {
+                    bg = display.colorLight;
+                  } else if (display.type === 'preview') {
+                    bg = display.valid ? '#bbf7d0' : '#fee2e2';
+                  }
+
+                  return (
+                    <div
+                      key={`cell-${row}-${col}`}
+                      style={{ ...styles.cell, backgroundColor: bg, cursor }}
+                      onClick={() => handleCellClick(row, col)}
+                      onMouseEnter={() => !placed && setHoveredCell({ row, col })}
+                      onMouseLeave={() => setHoveredCell(null)}
+                      title={`${String.fromCharCode(65 + row)}${col + 1}`}
+                    >
+                      {display.type === 'placed' && (
+                        <span style={{ fontSize: '18px' }}>
+                          {SHIP_CONFIGS.find(c => c.color === display.color)?.emoji || '\u{1F6A2}'}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            ))}
+          </div>
+        </div>
+
+        {/* Error */}
+        {error && <div style={styles.errorBox}>⚠ {error}</div>}
+
+        {/* Placed ships summary */}
+        {placedShips.length > 0 && (
+          <div style={styles.summaryRow}>
+            {placedShips.map(ship => {
+              const cfg = SHIP_CONFIGS.find(c => c.size === ship.size);
+              const headCoord = `${String.fromCharCode(65 + ship.start_row)}${ship.start_col + 1}`;
+              return (
+                <span key={ship.size} style={{ ...styles.summaryTag, borderColor: cfg.color, color: cfg.color }}>
+                  {cfg.emoji} {cfg.name} @ {headCoord} ({ship.orientation[0].toUpperCase()})
+                  <button
+                    onClick={() => { setPlacedShips(placedShips.filter(s => s.size !== ship.size)); setSelectedSize(ship.size); }}
+                    style={styles.removeBtn}
+                    title="Remove ship"
+                  >✕</button>
+                </span>
               );
             })}
-
-            <p style={styles.trayHint}>
-              <strong>Drag</strong> ships to the grid,<br />
-              or <strong>tap</strong> a ship then tap a cell.<br />
-              Press <strong>R</strong> to rotate.
-            </p>
           </div>
+        )}
 
-          {/* ── Grid ── */}
-          <div style={styles.gridWrapper}>
-            <div
-              style={{
-                ...styles.grid,
-                gridTemplateColumns: `40px repeat(${game.grid_size}, 40px)`,
-              }}
-              onDragLeave={() => setHoverCell(null)}
-              onMouseLeave={() => { if (!dragging) setHoverCell(null); }}
+        {/* Actions */}
+        {!placed ? (
+          <div style={styles.actions}>
+            <button
+              onClick={handleClear}
+              disabled={placedShips.length === 0}
+              style={{ ...styles.clearBtn, opacity: placedShips.length === 0 ? 0.4 : 1 }}
             >
-              <div style={styles.cornerCell} />
-
-              {Array.from({ length: game.grid_size }, (_, i) => (
-                <div key={`ch-${i}`} style={styles.headerCell}>{i + 1}</div>
-              ))}
-
-              {Array.from({ length: game.grid_size }, (_, row) => (
-                <Fragment key={row}>
-                  <div key={`rh-${row}`} style={styles.headerCell}>
-                    {String.fromCharCode(65 + row)}
-                  </div>
-                  {Array.from({ length: game.grid_size }, (_, col) => {
-                    const info = getCellInfo(row, col);
-                    let bg     = '#f3f4f6';
-                    let border = '1px solid #d1d5db';
-                    let cursor = 'default';
-
-                    if (dragging) cursor = 'crosshair';
-                    else if (selectedShipId) cursor = 'crosshair';
-
-                    if (info.type === 'ship') {
-                      bg     = info.ship.color;
-                      border = '2px solid rgba(0,0,0,0.25)';
-                      cursor = submitting ? 'default' : 'pointer';
-                    } else if (info.type === 'preview') {
-                      bg     = info.valid ? 'rgba(59,130,246,0.35)' : 'rgba(239,68,68,0.35)';
-                      border = `2px solid ${info.valid ? '#3b82f6' : '#ef4444'}`;
-                    }
-
-                    return (
-                      <div
-                        key={`cell-${row}-${col}`}
-                        style={{ ...styles.cell, backgroundColor: bg, border, cursor }}
-                        onDragOver={e => handleCellDragOver(e, row, col)}
-                        onDrop={e => handleCellDrop(e, row, col)}
-                        onMouseEnter={() => setHoverCell({ row, col })}
-                        onClick={() => {
-                          if (info.type === 'ship' && !submitting) {
-                            removeShip({ stopPropagation: () => {} }, info.ship.id);
-                          } else {
-                            handleCellTap(row, col);
-                          }
-                        }}
-                        title={`${formatCoordinate(row, col)}${info.type === 'ship' ? ` — ${info.ship.name}` : ''}`}
-                      />
-                    );
-                  })}
-                </Fragment>
-              ))}
-            </div>
+              ↺ Clear All
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={!allPlaced || submitting}
+              style={{ ...styles.submitBtn, opacity: !allPlaced || submitting ? 0.5 : 1 }}
+            >
+              {submitting ? 'Confirming...' : '✓ Confirm Placement'}
+            </button>
           </div>
+        ) : (
+          <div style={styles.waitingBox}>✓ Ships placed! Waiting for other players...</div>
+        )}
 
-        </div>{/* end mainLayout */}
-
-        {error && <div style={styles.errorBox}>⚠️ {error}</div>}
-
-        <div style={styles.actions}>
-          <button
-            onClick={() => {
-              setShips(prev => prev.map(s => ({ ...s, start_row: null, start_col: null })));
-              setSelectedShipId(null);
-              setError('');
-            }}
-            disabled={placedCount === 0 || submitting}
-            style={{ ...styles.clearBtn, opacity: placedCount === 0 || submitting ? 0.5 : 1 }}
-          >
-            🔄 Clear All
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={placedCount !== 3 || submitting}
-            style={{ ...styles.submitBtn, opacity: placedCount !== 3 || submitting ? 0.5 : 1 }}
-          >
-            {submitting ? '⏳ Waiting for others...' : '✅ Confirm Placement'}
-          </button>
+        {/* Instructions */}
+        <div style={styles.instructions}>
+          <strong>How to place ships:</strong> Select a ship above → click a grid cell to place it →
+          use ↔/↕ or press <kbd>Space</kbd> to flip orientation → click a placed ship to remove it.
         </div>
 
       </div>
@@ -514,7 +365,6 @@ function ShipPlacement({ gameId, onPlacementComplete }) {
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────────
 const styles = {
   container: {
     minHeight: '100vh',
@@ -523,134 +373,90 @@ const styles = {
     padding: '20px',
     boxSizing: 'border-box',
   },
-  content: {
-    maxWidth: '1100px',
-    margin: '0 auto',
-  },
-  card: {
+  content: { maxWidth: '900px', margin: '0 auto' },
+  centerCard: {
     background: 'white',
     padding: '40px',
     borderRadius: '12px',
     textAlign: 'center',
-    marginTop: '100px',
+    maxWidth: '400px',
+    margin: '100px auto',
   },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '20px',
-  },
-  title: {
-    fontSize: '30px',
-    color: 'white',
-    margin: 0,
-    textShadow: '2px 2px 4px rgba(0,0,0,0.2)',
-  },
-  subtitle: {
-    fontSize: '15px',
-    color: 'rgba(255,255,255,0.9)',
-    margin: '4px 0 0 0',
-  },
-  counter: {
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
+  title: { fontSize: '32px', color: 'white', margin: 0, textShadow: '2px 2px 4px rgba(0,0,0,0.2)' },
+  subtitle: { fontSize: '16px', color: 'rgba(255,255,255,0.9)', margin: '5px 0 0 0' },
+  counterBadge: {
     background: 'rgba(255,255,255,0.2)',
-    padding: '10px 20px',
+    padding: '12px 24px',
     borderRadius: '10px',
     border: '2px solid white',
-  },
-  counterText: {
-    fontSize: '17px',
+    fontSize: '18px',
     fontWeight: 'bold',
     color: 'white',
   },
-  mainLayout: {
+  backBtn: {
+    padding: '10px 18px',
+    background: 'rgba(255,255,255,0.15)',
+    color: 'white',
+    border: '2px solid rgba(255,255,255,0.5)',
+    borderRadius: '8px',
+    fontWeight: '600',
+    fontSize: '14px',
+    cursor: 'pointer',
+  },
+  shipSelectorRow: { display: 'flex', gap: '12px', marginBottom: '16px', justifyContent: 'center', flexWrap: 'wrap' },
+  shipBtn: {
     display: 'flex',
-    gap: '20px',
-    alignItems: 'flex-start',
-    marginBottom: '20px',
-    flexWrap: 'wrap',
-  },
-  tray: {
-    background: 'white',
-    borderRadius: '12px',
-    padding: '16px',
-    minWidth: '160px',
-    maxWidth: '190px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-    flex: '0 0 auto',
-  },
-  trayTitle: {
-    margin: '0 0 12px 0',
-    color: '#374151',
-    fontSize: '16px',
-    fontWeight: '700',
-  },
-  shipCard: {
-    background: '#f9fafb',
-    borderRadius: '10px',
-    padding: '10px',
-    marginBottom: '10px',
-    transition: 'opacity 0.2s, box-shadow 0.15s, border-color 0.15s',
-    userSelect: 'none',
-  },
-  shipCardHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     alignItems: 'center',
+    gap: '6px',
+    padding: '14px 20px',
+    borderRadius: '12px',
+    fontSize: '14px',
+    transition: 'all 0.15s',
+    minWidth: '120px',
   },
-  shipName: {
-    fontWeight: '700',
-    fontSize: '13px',
-    color: '#111827',
-  },
-  shipSizeBadge: {
-    fontSize: '11px',
-    color: '#6b7280',
-    background: '#f3f4f6',
-    padding: '1px 6px',
-    borderRadius: '10px',
-    fontWeight: '600',
-  },
-  rotateBtn: {
+  shipSizeBar: { display: 'flex', gap: '3px', margin: '4px 0' },
+  shipCell: { width: '14px', height: '14px', borderRadius: '3px' },
+  placedBadge: {
     fontSize: '12px',
-    padding: '4px 10px',
-    background: '#e0e7ff',
-    color: '#3730a3',
-    border: '1px solid #a5b4fc',
-    borderRadius: '6px',
+    background: '#d1fae5',
+    color: '#065f46',
+    padding: '2px 8px',
+    borderRadius: '20px',
+    fontWeight: 'bold',
+  },
+  orientationRow: { display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' },
+  orientBtn: {
+    padding: '10px 20px',
+    background: '#fbbf24',
+    border: '2px solid #f59e0b',
+    borderRadius: '8px',
+    fontSize: '15px',
+    fontWeight: 'bold',
     cursor: 'pointer',
-    fontWeight: '600',
+    display: 'flex',
+    alignItems: 'center',
+    color: '#1e1b4b',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
   },
-  removeBtn: {
-    fontSize: '12px',
-    padding: '4px 10px',
-    background: '#fee2e2',
-    color: '#dc2626',
-    border: '1px solid #fca5a5',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontWeight: '600',
+  placingHint: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: '15px',
+    background: 'rgba(255,255,255,0.15)',
+    padding: '8px 16px',
+    borderRadius: '8px',
   },
-  trayHint: {
-    fontSize: '11px',
-    color: '#9ca3af',
-    margin: '8px 0 0 0',
-    lineHeight: '1.6',
-  },
-  gridWrapper: {
+  gridContainer: {
     background: 'white',
-    padding: '16px',
+    padding: '20px',
     borderRadius: '12px',
     boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+    marginBottom: '16px',
     overflowX: 'auto',
   },
-  grid: {
-    display: 'grid',
-    gap: '0',
-  },
-  cornerCell: {
-    width: '40px',
-    height: '40px',
-  },
+  grid: { display: 'grid', gap: '0', gridAutoRows: '40px', justifyContent: 'center' },
+  cornerCell: { width: '40px', height: '40px' },
   headerCell: {
     width: '40px',
     height: '40px',
@@ -664,42 +470,85 @@ const styles = {
   cell: {
     width: '40px',
     height: '40px',
-    transition: 'background-color 0.1s',
     boxSizing: 'border-box',
+    border: '1px solid #d1d5db',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    lineHeight: 1,
+    transition: 'background-color 0.1s, box-shadow 0.1s',
+    userSelect: 'none',
   },
   errorBox: {
     background: '#fee2e2',
     color: '#dc2626',
     padding: '12px',
     borderRadius: '8px',
-    marginBottom: '16px',
+    marginBottom: '12px',
     border: '1px solid #fecaca',
     fontSize: '14px',
   },
-  actions: {
+  summaryRow: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' },
+  summaryTag: {
     display: 'flex',
-    gap: '12px',
-    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '6px',
+    border: '2px solid',
+    padding: '6px 12px',
+    borderRadius: '20px',
+    fontSize: '13px',
+    fontWeight: '600',
+    background: 'white',
   },
+  removeBtn: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: '14px',
+    color: '#9ca3af',
+    padding: '0 2px',
+    lineHeight: 1,
+  },
+  actions: { display: 'flex', gap: '12px', justifyContent: 'center', marginBottom: '16px' },
   clearBtn: {
-    padding: '13px 26px',
+    padding: '14px 28px',
     background: '#6b7280',
     color: 'white',
     border: 'none',
     borderRadius: '8px',
-    fontSize: '15px',
+    fontSize: '16px',
     fontWeight: 'bold',
     cursor: 'pointer',
   },
   submitBtn: {
-    padding: '13px 26px',
+    padding: '14px 28px',
     background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
     color: 'white',
     border: 'none',
     borderRadius: '8px',
-    fontSize: '15px',
+    fontSize: '16px',
     fontWeight: 'bold',
     cursor: 'pointer',
+  },
+  waitingBox: {
+    background: '#d1fae5',
+    color: '#065f46',
+    padding: '16px',
+    borderRadius: '10px',
+    textAlign: 'center',
+    fontSize: '16px',
+    fontWeight: '600',
+    marginBottom: '16px',
+    border: '2px solid #6ee7b7',
+  },
+  instructions: {
+    background: 'rgba(255,255,255,0.15)',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    fontSize: '13px',
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
   },
 };
 

@@ -62,7 +62,7 @@ try {
         }
         
         // Validate it's player's turn
-        if ($gamePlayer['turn_order'] != $game['current_turn_index']) {
+        if ($gamePlayer['turn_order'] !== $game['current_turn_index']) {
             forbidden('Not your turn');
         }
         

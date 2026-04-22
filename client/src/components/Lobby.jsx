@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { getAllGames, createGame, joinGame, getPlayerStats, getAllPlayers, updatePlayer } from '../services/api';
 import { getPlayer, clearPlayer } from '../utils/localStorage';
 
-function Lobby({ onJoinGame, onViewGame }) {
+function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
   const [games, setGames] = useState([]);
   const [stats, setStats] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -62,6 +62,10 @@ function Lobby({ onJoinGame, onViewGame }) {
 
   const handleCreateGame = async (e) => {
     e.preventDefault();
+    if (maxPlayers < 2) {
+      setError('At least 2 players are required to start a game.');
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -84,6 +88,9 @@ function Lobby({ onJoinGame, onViewGame }) {
     const { data, error: apiError } = await joinGame(gameId, player.playerId);
     if (data) {
       fetchGames();
+      setTimeout(() => onJoinGame(gameId), 300);
+    } else if (apiError && apiError.toLowerCase().includes('already in this game')) {
+      // Player is already registered in this game — treat as a rejoin
       setTimeout(() => onJoinGame(gameId), 300);
     } else {
       setError(apiError);
@@ -114,6 +121,22 @@ function Lobby({ onJoinGame, onViewGame }) {
             Logout
           </button>
         </div>
+
+        {/* Rejoin Banner */}
+        {myGames.length > 0 && (
+          <div style={styles.rejoinBanner}>
+            <span style={{ fontWeight: '700', marginRight: '12px' }}>🎯 Your active games:</span>
+            {myGames.map(g => (
+              <button
+                key={g.gameId}
+                onClick={() => onRejoinGame(g.gameId, g.view)}
+                style={styles.rejoinBtn}
+              >
+                ↩ Rejoin Game #{g.gameId}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Main Content Grid */}
         <div style={styles.mainGrid}>
@@ -187,9 +210,9 @@ function Lobby({ onJoinGame, onViewGame }) {
                   <div style={styles.statBox}>
                     <div style={{
                       ...styles.statValue,
-                      color: stats.accuracy >= 0.6 ? '#10b981' : stats.accuracy >= 0.4 ? '#f59e0b' : '#ef4444'
+                      color: (stats.accuracy ?? 0) >= 0.6 ? '#10b981' : (stats.accuracy ?? 0) >= 0.4 ? '#f59e0b' : '#6b7280'
                     }}>
-                      {stats.accuracy ? (stats.accuracy * 100).toFixed(1) : 0}%
+                      {stats.accuracy != null ? (stats.accuracy * 100).toFixed(1) : '0.0'}%
                     </div>
                     <div style={styles.statLabel}>Accuracy</div>
                   </div>
@@ -297,10 +320,19 @@ function Lobby({ onJoinGame, onViewGame }) {
                                         normalizedStatus.toUpperCase();
                     
                     return (
-                      <div key={game.game_id} style={styles.gameCard}>
+                      <div key={game.game_id} style={{
+                        ...styles.gameCard,
+                        border: myGames.some(g => g.gameId === game.game_id) ? '2px solid #f59e0b' : '2px solid #e5e7eb',
+                        background: myGames.some(g => g.gameId === game.game_id) ? '#fffbeb' : '#f9fafb',
+                      }}>
                         <div style={styles.gameCardHeader}>
                           <div>
-                            <h3 style={styles.gameTitle}>Game #{game.game_id}</h3>
+                            <h3 style={styles.gameTitle}>
+                              Game #{game.game_id}
+                              {myGames.some(g => g.gameId === game.game_id) && (
+                                <span style={styles.yourGameBadge}>YOUR GAME</span>
+                              )}
+                            </h3>
                             <p style={styles.gameInfo}>
                               📏 {game.grid_size}×{game.grid_size} | 
                               👥 {game.active_players || 0}/{game.max_players} players
@@ -534,6 +566,42 @@ const styles = {
     margin: '0 0 6px 0',
     color: '#111827',
     fontWeight: '600',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    flexWrap: 'wrap',
+  },
+  yourGameBadge: {
+    fontSize: '10px',
+    padding: '2px 8px',
+    background: '#f59e0b',
+    color: 'white',
+    borderRadius: '4px',
+    fontWeight: 'bold',
+    letterSpacing: '0.5px',
+  },
+  rejoinBanner: {
+    background: 'rgba(255,255,255,0.15)',
+    border: '2px solid rgba(255,255,255,0.4)',
+    borderRadius: '10px',
+    padding: '12px 20px',
+    marginBottom: '20px',
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '10px',
+    color: 'white',
+    fontSize: '15px',
+  },
+  rejoinBtn: {
+    padding: '8px 16px',
+    background: '#f59e0b',
+    color: '#1e1b4b',
+    border: 'none',
+    borderRadius: '8px',
+    fontWeight: '700',
+    fontSize: '14px',
+    cursor: 'pointer',
   },
   gameInfo: {
     fontSize: '14px',

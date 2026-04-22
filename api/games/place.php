@@ -91,7 +91,7 @@ try {
         $total = (int)$counts['total'];
         $placed = (int)$counts['placed'];
 
-        if ($total > 0 && $total === $placed) {
+        if ($total >= 2 && $total === $placed) {
             // All players have placed - activate the game
             $stmt = $pdo->prepare("UPDATE Games SET status = 'active' WHERE game_id = ?");
             $stmt->execute([$gameId]);
