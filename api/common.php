@@ -116,7 +116,7 @@ function isValidGridSize($gridSize) {
 }
 
 function isValidMaxPlayers($maxPlayers) {
-    return is_numeric($maxPlayers) && $maxPlayers >= 2 && $maxPlayers <= 10;
+    return is_numeric($maxPlayers) && $maxPlayers >= 2 && $maxPlayers <= 4;
 }
 
 function isValidCoordinate($row, $col, $gridSize) {

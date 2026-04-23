@@ -296,7 +296,10 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
           alignItems: 'start',
         }}>
           {/* Boards Grid */}
-          <div style={styles.boardsContainer}>
+          <div style={{
+            ...styles.boardsContainer,
+            gridTemplateColumns: game.grid_size > 10 ? '1fr' : 'repeat(auto-fit, minmax(350px, 1fr))'
+          }}>
             {/* My Board */}
             {myPlayer && renderBoard(myPlayer, true)}
 

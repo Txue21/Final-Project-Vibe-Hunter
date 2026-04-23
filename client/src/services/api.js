@@ -38,6 +38,24 @@ export const getAllGames = async () => {
   }
 };
 
+export const getMyGames = async (playerId) => {
+  try {
+    const response = await axios.get(`${API_BASE}/games?player_id=${playerId}`);
+    return handleResponse(response);
+  } catch (error) {
+    return handleError(error);
+  }
+};
+
+export const searchGameById = async (gameId) => {
+  try {
+    const response = await axios.get(`${API_BASE}/games?game_id=${gameId}`);
+    return handleResponse(response);
+  } catch (error) {
+    return handleError(error);
+  }
+};
+
 export const getGame = async (gameId) => {
   try {
     const response = await axios.get(`${API_BASE}/games/${gameId}`);

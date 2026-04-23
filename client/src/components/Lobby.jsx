@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { getAllGames, createGame, joinGame, getPlayerStats, getAllPlayers, updatePlayer } from '../services/api';
+import { getAllGames, getMyGames, searchGameById, createGame, joinGame, getPlayerStats, getAllPlayers, updatePlayer } from '../services/api';
 import { getPlayer, clearPlayer } from '../utils/localStorage';
+import LeaderboardModal from './LeaderboardModal';
 
 function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
   const [games, setGames] = useState([]);
@@ -11,6 +12,10 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
   const [gridSize, setGridSize] = useState(8);
   const [maxPlayers, setMaxPlayers] = useState(3);
   const [hideUsername, setHideUsername] = useState(false);
+  const [showMyGamesOnly, setShowMyGamesOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [copySuccess, setCopySuccess] = useState(null);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   
   const player = getPlayer();
 
@@ -23,11 +28,28 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
       fetchLeaderboard();
     }, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [showMyGamesOnly, searchQuery]);
 
   const fetchGames = async () => {
-    const { data } = await getAllGames();
-    if (data) setGames(data);
+    // If searching by game ID
+    if (searchQuery.trim()) {
+      const gameId = parseInt(searchQuery.trim());
+      if (!isNaN(gameId)) {
+        const { data } = await searchGameById(gameId);
+        if (data) setGames(data);
+      }
+      return;
+    }
+    
+    // If filtering to show only my games
+    if (showMyGamesOnly && player) {
+      const { data } = await getMyGames(player.playerId);
+      if (data) setGames(data);
+    } else {
+      // Default: show all games
+      const { data } = await getAllGames();
+      if (data) setGames(data);
+    }
   };
 
   const fetchStats = async () => {
@@ -103,6 +125,24 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
     window.location.reload();
   };
 
+  const handleCopyGameId = async (gameId) => {
+    try {
+      await navigator.clipboard.writeText(gameId.toString());
+      setCopySuccess(gameId);
+      setTimeout(() => setCopySuccess(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy game ID:', err);
+    }
+  };
+
+  const handleSearchChange = (e) => {
+    setSearchQuery(e.target.value);
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.innerContainer}>
@@ -112,14 +152,25 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
             <h1 style={styles.title}>🎮 Battleship Lobby</h1>
             <p style={styles.welcomeText}>Welcome, <strong>{player?.username}</strong>!</p>
           </div>
-          <button
-            onClick={handleLogout}
-            style={styles.logoutBtn}
-            onMouseEnter={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = '#667eea'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'white'; }}
-          >
-            Logout
-          </button>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <button
+              onClick={() => setShowLeaderboard(true)}
+              style={styles.trophyBtn}
+              onMouseEnter={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = '#667eea'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'white'; }}
+              title="View Leaderboard"
+            >
+              🏆 Leaderboard
+            </button>
+            <button
+              onClick={handleLogout}
+              style={styles.logoutBtn}
+              onMouseEnter={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = '#667eea'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'white'; }}
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         {/* Rejoin Banner */}
@@ -137,6 +188,34 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
             ))}
           </div>
         )}
+
+        {/* Search and Filter Bar */}
+        <div style={styles.searchFilterBar}>
+          <div style={styles.searchContainer}>
+            <input
+              type="text"
+              placeholder="🔍 Search by Game ID..."
+              value={searchQuery}
+              onChange={handleSearchChange}
+              style={styles.searchInput}
+            />
+            {searchQuery && (
+              <button onClick={handleClearSearch} style={styles.clearSearchBtn}>
+                ✕
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => setShowMyGamesOnly(!showMyGamesOnly)}
+            style={{
+              ...styles.filterToggle,
+              background: showMyGamesOnly ? '#667eea' : 'white',
+              color: showMyGamesOnly ? 'white' : '#667eea',
+            }}
+          >
+            {showMyGamesOnly ? '👤 My Games' : '🌐 All Games'}
+          </button>
+        </div>
 
         {/* Main Content Grid */}
         <div style={styles.mainGrid}>
@@ -161,11 +240,11 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
                 </div>
 
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Max Players (2-10):</label>
+                  <label style={styles.label}>Max Players (2-4):</label>
                   <input
                     type="number"
                     min="2"
-                    max="10"
+                    max="4"
                     value={maxPlayers}
                     onChange={(e) => setMaxPlayers(parseInt(e.target.value))}
                     style={styles.input}
@@ -255,54 +334,38 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
                 </div>
               )}
             </div>
-
-            {/* Leaderboard Card */}
-            <div style={styles.card}>
-              <h2 style={styles.cardTitle}>🏆 Leaderboard</h2>
-              {leaderboard.length > 0 ? (
-                <div style={styles.leaderboardList}>
-                  {leaderboard.map((player, index) => (
-                    <div 
-                      key={player.player_id} 
-                      style={{
-                        ...styles.leaderboardItem,
-                        background: index === 0 ? '#fef3c7' : index === 1 ? '#e5e7eb' : index === 2 ? '#fde68a' : 'white'
-                      }}
-                    >
-                      <div style={styles.leaderboardRank}>
-                        {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
-                      </div>
-                      <div style={styles.leaderboardName}>
-                        {player.username}
-                        {player.player_id === getPlayer()?.playerId && (
-                          <span style={styles.youBadge}>YOU</span>
-                        )}
-                      </div>
-                      <div style={styles.leaderboardStats}>
-                        <span style={styles.leaderboardWins}>{player.wins}W</span>
-                        <span style={styles.leaderboardAccuracy}>
-                          {player.accuracy ? (player.accuracy * 100).toFixed(0) : 0}%
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p style={styles.noStats}>🎯 No players yet - be the first!</p>
-              )}
-            </div>
           </div>
 
           {/* Right Column - Games List */}
           <div style={styles.rightColumn}>
             <div style={styles.card}>
-              <h2 style={styles.cardTitle}>🎮 Available Games ({games.length})</h2>
+              <h2 style={styles.cardTitle}>
+                🎮 {showMyGamesOnly ? 'My Games' : 'Available Games'} ({games.length})
+              </h2>
+              
+              {copySuccess && (
+                <div style={styles.copyNotification}>
+                  ✓ Game ID #{copySuccess} copied to clipboard!
+                </div>
+              )}
               
               {games.length === 0 ? (
                 <div style={styles.emptyState}>
                   <div style={styles.emptyIcon}>🎯</div>
-                  <p>No games available yet</p>
-                  <p style={{fontSize: '14px', color: '#9ca3af'}}>Create the first game!</p>
+                  <p>
+                    {searchQuery 
+                      ? `No game found with ID "${searchQuery}"`
+                      : showMyGamesOnly 
+                        ? "You're not in any games yet"
+                        : "No games available yet"}
+                  </p>
+                  <p style={{fontSize: '14px', color: '#9ca3af'}}>
+                    {searchQuery 
+                      ? 'Check the number and try again'
+                      : showMyGamesOnly 
+                        ? 'Create or join one!'
+                        : 'Create the first game!'}
+                  </p>
                 </div>
               ) : (
                 <div style={styles.gamesList}>
@@ -312,6 +375,7 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
                     const isWaiting = normalizedStatus.includes('waiting');
                     const isActive = normalizedStatus === 'active' || normalizedStatus === 'playing';
                     const isFinished = normalizedStatus === 'finished';
+                    const isMyGame = myGames.some(g => g.gameId === game.game_id);
                     
                     // Format status for display
                     const displayStatus = isWaiting ? 'WAITING' : 
@@ -322,14 +386,14 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
                     return (
                       <div key={game.game_id} style={{
                         ...styles.gameCard,
-                        border: myGames.some(g => g.gameId === game.game_id) ? '2px solid #f59e0b' : '2px solid #e5e7eb',
-                        background: myGames.some(g => g.gameId === game.game_id) ? '#fffbeb' : '#f9fafb',
+                        border: isMyGame ? '2px solid #f59e0b' : '2px solid #e5e7eb',
+                        background: isMyGame ? '#fffbeb' : '#f9fafb',
                       }}>
                         <div style={styles.gameCardHeader}>
                           <div>
                             <h3 style={styles.gameTitle}>
                               Game #{game.game_id}
-                              {myGames.some(g => g.gameId === game.game_id) && (
+                              {isMyGame && (
                                 <span style={styles.yourGameBadge}>YOUR GAME</span>
                               )}
                             </h3>
@@ -348,30 +412,42 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
                           </span>
                         </div>
 
-                        {isWaiting && (
-                          <button
-                            onClick={() => handleJoinGame(game.game_id)}
-                            disabled={loading}
-                            style={styles.joinBtn}
-                          >
-                            ➡️ Join Game
-                          </button>
-                        )}
+                        <div style={styles.gameActions}>
+                          {isWaiting && (
+                            <button
+                              onClick={() => handleJoinGame(game.game_id)}
+                              disabled={loading}
+                              style={styles.joinBtn}
+                            >
+                              ➡️ Join Game
+                            </button>
+                          )}
 
-                        {isActive && (
-                          <button
-                            onClick={() => onViewGame(game.game_id)}
-                            style={styles.viewBtn}
-                          >
-                            👁️ View Game
-                          </button>
-                        )}
+                          {isActive && (
+                            <button
+                              onClick={() => onViewGame(game.game_id)}
+                              style={styles.viewBtn}
+                            >
+                              👁️ View Game
+                            </button>
+                          )}
 
-                        {isFinished && (
-                          <button style={styles.finishedBtn} disabled>
-                            ✅ Game Over
-                          </button>
-                        )}
+                          {isFinished && (
+                            <button style={styles.finishedBtn} disabled>
+                              ✅ Game Over
+                            </button>
+                          )}
+
+                          {isMyGame && (
+                            <button
+                              onClick={() => handleCopyGameId(game.game_id)}
+                              style={styles.copyBtn}
+                              title="Copy Game ID to share with friends"
+                            >
+                              {copySuccess === game.game_id ? '✓ Copied!' : '📋 Share ID'}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -381,6 +457,14 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
           </div>
         </div>
       </div>
+
+      {/* Leaderboard Modal */}
+      {showLeaderboard && (
+        <LeaderboardModal 
+          leaderboard={leaderboard} 
+          onClose={() => setShowLeaderboard(false)} 
+        />
+      )}
     </div>
   );
 }
@@ -418,6 +502,17 @@ const styles = {
     margin: '5px 0 0 0',
   },
   logoutBtn: {
+    padding: '10px 24px',
+    background: 'rgba(255,255,255,0.2)',
+    color: 'white',
+    border: '2px solid white',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontSize: '16px',
+    fontWeight: '600',
+    transition: 'background 0.2s, color 0.2s',
+  },
+  trophyBtn: {
     padding: '10px 24px',
     background: 'rgba(255,255,255,0.2)',
     color: 'white',
@@ -699,6 +794,82 @@ const styles = {
   },
   leaderboardAccuracy: {
     color: '#667eea',
+  },
+  searchFilterBar: {
+    display: 'flex',
+    gap: '12px',
+    marginBottom: '20px',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  searchContainer: {
+    position: 'relative',
+    flex: 1,
+    minWidth: '280px',
+  },
+  searchInput: {
+    width: '100%',
+    padding: '12px 40px 12px 16px',
+    fontSize: '15px',
+    border: '2px solid rgba(255,255,255,0.4)',
+    borderRadius: '10px',
+    background: 'rgba(255,255,255,0.95)',
+    boxSizing: 'border-box',
+    color: '#374151',
+    fontWeight: '500',
+  },
+  clearSearchBtn: {
+    position: 'absolute',
+    right: '8px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    background: 'transparent',
+    border: 'none',
+    color: '#9ca3af',
+    fontSize: '18px',
+    cursor: 'pointer',
+    padding: '4px 8px',
+    borderRadius: '4px',
+    lineHeight: 1,
+  },
+  filterToggle: {
+    padding: '12px 24px',
+    border: '2px solid white',
+    borderRadius: '10px',
+    fontSize: '15px',
+    fontWeight: '700',
+    cursor: 'pointer',
+    transition: 'all 0.3s',
+    whiteSpace: 'nowrap',
+  },
+  gameActions: {
+    display: 'flex',
+    gap: '8px',
+    flexWrap: 'wrap',
+  },
+  copyBtn: {
+    flex: 1,
+    minWidth: '120px',
+    padding: '12px',
+    background: '#f59e0b',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: '600',
+    fontSize: '14px',
+    transition: 'background-color 0.3s',
+  },
+  copyNotification: {
+    background: '#d1fae5',
+    color: '#065f46',
+    padding: '10px 16px',
+    borderRadius: '8px',
+    marginBottom: '16px',
+    fontSize: '14px',
+    fontWeight: '600',
+    textAlign: 'center',
+    border: '1px solid #10b981',
   },
 };
 

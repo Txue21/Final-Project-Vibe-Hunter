@@ -71,21 +71,64 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
     $parts = explode('/', trim($path, '/'));
     
-    // GET /api/games - List all games
+    // GET /api/games - List all games (with optional filters)
     if (count($parts) === 2 && $parts[1] === 'games') {
         try {
-            $stmt = $pdo->query("
-                SELECT 
-                    game_id,
-                    grid_size,
-                    max_players,
-                    status,
-                    active_players,
-                    current_turn_index,
-                    created_at
-                FROM Games
-                ORDER BY game_id DESC
-            ");
+            // Get query parameters
+            $playerId = isset($_GET['player_id']) ? (int)$_GET['player_id'] : null;
+            $gameId = isset($_GET['game_id']) ? (int)$_GET['game_id'] : null;
+            
+            // Filter by specific game ID
+            if ($gameId) {
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        game_id,
+                        grid_size,
+                        max_players,
+                        status,
+                        active_players,
+                        current_turn_index,
+                        created_at
+                    FROM Games
+                    WHERE game_id = ?
+                    ORDER BY game_id DESC
+                ");
+                $stmt->execute([$gameId]);
+            }
+            // Filter by player ID (games where player is a participant)
+            else if ($playerId) {
+                $stmt = $pdo->prepare("
+                    SELECT DISTINCT
+                        g.game_id,
+                        g.grid_size,
+                        g.max_players,
+                        g.status,
+                        g.active_players,
+                        g.current_turn_index,
+                        g.created_at
+                    FROM Games g
+                    JOIN GamePlayers gp ON g.game_id = gp.game_id
+                    WHERE gp.player_id = ?
+                    ORDER BY g.game_id DESC
+                ");
+                $stmt->execute([$playerId]);
+            }
+            // No filters - return all games
+            else {
+                $stmt = $pdo->query("
+                    SELECT 
+                        game_id,
+                        grid_size,
+                        max_players,
+                        status,
+                        active_players,
+                        current_turn_index,
+                        created_at
+                    FROM Games
+                    ORDER BY game_id DESC
+                ");
+            }
+            
             $games = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             // Convert numeric fields to integers

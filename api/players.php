@@ -88,7 +88,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             // Convert numeric fields to integers
             foreach ($players as &$player) {
                 $player['player_id'] = (int)$player['player_id'];
-                $player['username'] = $player['hide_username'] ? 'Player ' . $player['player_id'] : $player['username'];
+                $player['username'] = $player['hide_username'] ? '🕵️ Anonymous' : $player['username'];
                 $player['games_played'] = (int)$player['games_played'];
                 $player['wins'] = (int)$player['wins'];
                 $player['losses'] = (int)$player['losses'];
