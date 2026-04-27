@@ -3,19 +3,15 @@
  * POST /api/games/{id}/place
  * Place ships for a player
  */
-
 require_once __DIR__ . '/../common.php';
-
 setCorsHeaders();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     badRequest('Method not allowed');
 }
 
-// Parse game ID from URL
-$path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$path  = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $parts = explode('/', trim($path, '/'));
-// Expected: api/games/{id}/place
 $gameId = isset($parts[count($parts) - 2]) ? (int)$parts[count($parts) - 2] : 0;
 
 if ($gameId <= 0) {
@@ -26,7 +22,7 @@ $data = getJsonBody();
 requireFields($data, ['player_id', 'ships']);
 
 $playerId = (int)$data['player_id'];
-$ships = $data['ships'];
+$ships    = $data['ships'];
 
 // Validate game exists
 $game = getGame($pdo, $gameId);
@@ -34,20 +30,26 @@ if (!$game) {
     notFound('Game not found');
 }
 
-// Validate game status - can only place during waiting
-if ($game['status'] !== 'waiting') {
-    forbidden('Cannot place ships after game has started');
-}
-
 // Validate player is in game
 $gamePlayer = getGamePlayer($pdo, $gameId, $playerId);
 if (!$gamePlayer) {
-    forbidden('Player is not in this game');
+    badRequest('Player is not in this game');
 }
 
-// Check if ships already placed
+// Check if ships already placed → 409 BEFORE checking game status
+// This way second placement always returns 409, even after game is active
 if ($gamePlayer['ships_placed']) {
-    badRequest('Ships already placed');
+    jsonResponse(['error' => 'Ships already placed for this player'], 409);
+}
+
+// Now check game status (only reject if not waiting)
+if ($game['status'] !== 'waiting_setup' && $game['status'] !== 'waiting') {
+    badRequest('Cannot place ships after game has started');
+}
+
+// Validate ships array
+if (!is_array($ships)) {
+    badRequest('ships must be an array');
 }
 
 // Validate ships — returns [valid, error, expandedCells]
@@ -67,28 +69,23 @@ try {
         foreach ($expandedCells as $cell) {
             $stmt->execute([$gameId, $playerId, $cell['row'], $cell['col'], $cell['group_id']]);
         }
-
-        // Mark ships as placed for this player
+        
         $stmt = $pdo->prepare("
-            UPDATE GamePlayers
-            SET ships_placed = TRUE
+            UPDATE GamePlayers SET ships_placed = TRUE
             WHERE game_id = ? AND player_id = ?
         ");
         $stmt->execute([$gameId, $playerId]);
-
-        // Check if ALL players in this game have placed ships
+        
+        // Check if ALL players placed
         $stmt = $pdo->prepare("
-            SELECT
-                COUNT(*) as total,
-                SUM(CASE WHEN ships_placed = TRUE THEN 1 ELSE 0 END) as placed
-            FROM GamePlayers
-            WHERE game_id = ?
+            SELECT COUNT(*) as total,
+                   SUM(CASE WHEN ships_placed = TRUE THEN 1 ELSE 0 END) as placed
+            FROM GamePlayers WHERE game_id = ?
         ");
         $stmt->execute([$gameId]);
         $counts = $stmt->fetch();
-
-        // FIX: Explicitly cast to int to avoid string comparison issues
-        $total = (int)$counts['total'];
+        
+        $total  = (int)$counts['total'];
         $placed = (int)$counts['placed'];
 
         if ($total >= 2 && $total === $placed) {
@@ -97,12 +94,12 @@ try {
             $stmt->execute([$gameId]);
             return 'active';
         }
-
-        return 'waiting';
+        
+        return 'waiting_setup';
     });
-
-    jsonResponse(['status' => 'ships_placed'], 200);
-
+    
+    jsonResponse(['status' => 'placed'], 200);
+    
 } catch (PDOException $e) {
     if ($e->getCode() == 23000) {
         badRequest('Ship position already occupied');

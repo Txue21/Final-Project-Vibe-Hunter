@@ -8,13 +8,18 @@ RewriteBase /
 RewriteCond %{REQUEST_METHOD} OPTIONS
 RewriteRule ^(.*)$ $1 [R=200,L]
 
+# ============================================
 # API Routing Rules
+# ============================================
+
+# Health endpoint
+RewriteRule ^api/health/?$ api/health.php [L]
 
 # POST /api/reset
 RewriteRule ^api/reset/?$ api/reset.php [L]
 
 # Player endpoints
-# POST /api/players
+# GET /api/players (list) + POST /api/players (create)
 RewriteRule ^api/players/?$ api/players.php [L]
 # GET /api/players/{id}/stats
 RewriteRule ^api/players/([^/]+)/stats/?$ api/players.php [L]
@@ -23,31 +28,23 @@ RewriteRule ^api/players/([^/]+)/stats/?$ api/players.php [L]
 RewriteRule ^api/players/([^/]+)/?$ api/players.php [L]
 
 # Game endpoints
-# POST /api/games (create game)
-# GET /api/games/{id} (get game state)
+# GET /api/games (list) + POST /api/games (create)
 RewriteRule ^api/games/?$ api/games.php [L]
+# GET /api/games/{id}
 RewriteRule ^api/games/([0-9]+)/?$ api/games.php [L]
 
 # POST /api/games/{id}/join
 RewriteRule ^api/games/([0-9]+)/join/?$ api/games/join.php [L]
-
 # POST /api/games/{id}/place
 RewriteRule ^api/games/([0-9]+)/place/?$ api/games/place.php [L]
-
 # POST /api/games/{id}/fire
 RewriteRule ^api/games/([0-9]+)/fire/?$ api/games/fire.php [L]
-
 # GET /api/games/{id}/moves
 RewriteRule ^api/games/([0-9]+)/moves/?$ api/games/moves.php [L]
 
 # Test mode endpoints
-# POST /api/test/games/{id}/restart
 RewriteRule ^api/test/games/([0-9]+)/restart/?$ api/test/games/restart.php [L]
-
-# POST /api/test/games/{id}/ships
 RewriteRule ^api/test/games/([0-9]+)/ships/?$ api/test/games/ships.php [L]
-
-# GET /api/test/games/{id}/board/{player_id}
 RewriteRule ^api/test/games/([0-9]+)/board/([^/]+)/?$ api/test/games/board.php [L]
 
 # Deny access to sensitive files
@@ -56,7 +53,6 @@ RewriteRule ^api/test/games/([0-9]+)/board/([^/]+)/?$ api/test/games/board.php [
     Deny from all
 </FilesMatch>
 
-# Protect config and db files
 <FilesMatch "^(config|db|testdb)\.php$">
     Order allow,deny
     Deny from all

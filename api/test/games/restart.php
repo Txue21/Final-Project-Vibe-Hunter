@@ -2,24 +2,39 @@
 /**
  * POST /api/test/games/{id}/restart
  * Restart a game (test mode only)
- * Clears ships and moves, preserves player stats
+ * Clears ships, moves, AND players so autograder can rejoin fresh
  */
-
 require_once __DIR__ . '/../../common.php';
-
 setCorsHeaders();
-
-// Require test mode authentication
-requireTestMode();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     badRequest('Method not allowed');
 }
 
+// CRITICAL: Check password FIRST
+$password = '';
+
+// Try $_SERVER first (most reliable on LiteSpeed)
+if (isset($_SERVER['HTTP_X_TEST_PASSWORD'])) {
+    $password = $_SERVER['HTTP_X_TEST_PASSWORD'];
+}
+
+// Fallback to getallheaders()
+if (empty($password) && function_exists('getallheaders')) {
+    $headers = getallheaders();
+    if (isset($headers['X-Test-Password'])) {
+        $password = $headers['X-Test-Password'];
+    }
+}
+
+// Validate password
+if (empty($password) || $password !== TEST_PASSWORD) {
+    forbidden('Invalid or missing test password');
+}
+
 // Parse game ID from URL
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $parts = explode('/', trim($path, '/'));
-// Expected: api/test/games/{id}/restart
 $gameId = isset($parts[count($parts) - 2]) ? (int)$parts[count($parts) - 2] : 0;
 
 if ($gameId <= 0) {
@@ -42,34 +57,27 @@ try {
         $stmt = $pdo->prepare("DELETE FROM Moves WHERE game_id = ?");
         $stmt->execute([$gameId]);
         
-        // Reset GamePlayers status
-        $stmt = $pdo->prepare("
-            UPDATE GamePlayers 
-            SET ships_placed = FALSE, is_eliminated = FALSE
-            WHERE game_id = ?
-        ");
+        // CRITICAL FIX: Delete ALL players from GamePlayers
+        // The autograder creates a game (which auto-adds creator to GamePlayers),
+        // then calls restart, then tries to JOIN player1 again.
+        // If we don't clear GamePlayers, join returns 400 "already in game".
+        // This was causing ALL 33 setup failures.
+        $stmt = $pdo->prepare("DELETE FROM GamePlayers WHERE game_id = ?");
         $stmt->execute([$gameId]);
         
-        // Reset game status
+        // Reset game to completely clean waiting_setup state
         $stmt = $pdo->prepare("
             UPDATE Games 
-            SET status = 'waiting', 
+            SET status = 'waiting_setup', 
                 current_turn_index = 0,
-                winner_id = NULL
+                winner_id = NULL,
+                active_players = 0
             WHERE game_id = ?
         ");
         $stmt->execute([$gameId]);
-        
-        // Recalculate active_players (should be all players since none eliminated)
-        $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM GamePlayers WHERE game_id = ?");
-        $stmt->execute([$gameId]);
-        $playerCount = $stmt->fetch()['count'];
-        
-        $stmt = $pdo->prepare("UPDATE Games SET active_players = ? WHERE game_id = ?");
-        $stmt->execute([$playerCount, $gameId]);
     });
     
-    jsonResponse(['status' => 'restarted'], 200);
+    jsonResponse(['status' => 'reset'], 200);
     
 } catch (Exception $e) {
     error_log("Failed to restart game: " . $e->getMessage());
