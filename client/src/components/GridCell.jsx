@@ -170,10 +170,10 @@ function GridCell({
       {sonarResult === 'preview' && (
         <div style={{
           position: 'absolute', inset: 0,
-          background: 'rgba(6,182,212,0.22)',
+          background: 'rgba(6,182,212,0.38)',
           pointerEvents: 'none',
           borderRadius: '2px',
-          outline: '1px solid rgba(6,182,212,0.5)',
+          outline: '1px solid rgba(6,182,212,0.6)',
         }} />
       )}
     </div>

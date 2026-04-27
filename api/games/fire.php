@@ -209,9 +209,9 @@ try {
             }
         }
         
-        // Advance turn to next active player
+        // Advance turn to next active player (only if game is still ongoing)
         $nextPlayerId = null;
-        if ($gameStatus === 'playing') {
+        if ($gameStatus !== 'finished') {
             $activePlayers = getActivePlayers($pdo, $gameId);
             
             $currentIndex = -1;
