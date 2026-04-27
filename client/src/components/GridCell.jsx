@@ -8,7 +8,9 @@ function GridCell({
   size = 40, 
   onClick, 
   disabled = false,
-  showCoordinate = false 
+  showCoordinate = false,
+  sonarResult = null,  // null | 'signal' | 'scanned' | 'ship' | 'preview-center' | 'preview'
+  onCellHover = null,  // (row, col) | (null, null) — used in sonar mode for shape preview
 }) {
   // state can be: 'empty', 'ship', 'hit', 'miss', 'sunk'
   const [prevState, setPrevState] = useState(state);
@@ -102,14 +104,18 @@ function GridCell({
   };
 
   const handleMouseEnter = (e) => {
-    if (!disabled && onClick && state === 'empty') {
+    if (onCellHover) {
+      onCellHover(row, col);
+    } else if (!disabled && onClick && state === 'empty') {
       e.currentTarget.style.backgroundColor = '#e0e7ff';
       e.currentTarget.style.transform = 'scale(1.05)';
     }
   };
 
   const handleMouseLeave = (e) => {
-    if (!disabled && onClick && state === 'empty') {
+    if (onCellHover) {
+      onCellHover(null, null);
+    } else if (!disabled && onClick && state === 'empty') {
       e.currentTarget.style.transform = 'scale(1)';
       e.currentTarget.style.backgroundColor = '#f3f4f6';
     }
@@ -124,6 +130,52 @@ function GridCell({
       title={`${String.fromCharCode(65 + row)}${col + 1}`}
     >
       {getCellContent()}
+      {sonarResult === 'signal' && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(16,185,129,0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: `${size * 0.4}px`, pointerEvents: 'none',
+          borderRadius: '2px',
+        }}>📡</div>
+      )}
+      {sonarResult === 'scanned' && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(107,114,128,0.3)',
+          pointerEvents: 'none',
+          borderRadius: '2px',
+        }} />
+      )}
+      {sonarResult === 'ship' && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(245,158,11,0.75)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: `${size * 0.5}px`, pointerEvents: 'none',
+          borderRadius: '2px',
+          outline: '2px solid #f59e0b',
+        }}>🚢</div>
+      )}
+      {sonarResult === 'preview-center' && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(6,182,212,0.55)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: `${size * 0.45}px`, pointerEvents: 'none',
+          borderRadius: '2px',
+          outline: '2px solid #06b6d4',
+        }}>🎯</div>
+      )}
+      {sonarResult === 'preview' && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(6,182,212,0.22)',
+          pointerEvents: 'none',
+          borderRadius: '2px',
+          outline: '1px solid rgba(6,182,212,0.5)',
+        }} />
+      )}
     </div>
   );
 }

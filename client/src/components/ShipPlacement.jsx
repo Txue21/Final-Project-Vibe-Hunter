@@ -354,6 +354,41 @@ function ShipPlacement({ gameId, onPlacementComplete, onBackToLobby }) {
           <div style={styles.waitingBox}>✓ Ships placed! Waiting for other players...</div>
         )}
 
+        {/* Player Roster */}
+        {game.players && game.players.length > 0 && (() => {
+          const readyCount = game.players.filter(p => p.ships_placed).length;
+          return (
+            <div style={styles.rosterBox}>
+              <h3 style={styles.rosterTitle}>
+                👥 Players ({readyCount}/{game.players.length} ready)
+              </h3>
+              <div style={styles.rosterList}>
+                {game.players.map(p => {
+                  const isMe = p.player_id === player?.playerId;
+                  return (
+                    <div key={p.player_id} style={{
+                      ...styles.rosterRow,
+                      background: isMe ? '#eef2ff' : 'white',
+                      border: isMe ? '2px solid #667eea' : '2px solid #e5e7eb',
+                    }}>
+                      <span style={styles.rosterName}>
+                        {p.username}
+                        {isMe && <span style={styles.youBadge}>YOU</span>}
+                      </span>
+                      <span style={{
+                        ...styles.rosterStatus,
+                        color: p.ships_placed ? '#10b981' : '#f59e0b',
+                      }}>
+                        {p.ships_placed ? '✅ Ready' : '🚢 Placing...'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Instructions */}
         <div style={styles.instructions}>
           <strong>How to place ships:</strong> Select a ship above → click a grid cell to place it →
@@ -541,6 +576,51 @@ const styles = {
     fontWeight: '600',
     marginBottom: '16px',
     border: '2px solid #6ee7b7',
+  },
+  rosterBox: {
+    background: 'rgba(255,255,255,0.15)',
+    borderRadius: '12px',
+    padding: '16px',
+    marginBottom: '16px',
+    border: '2px solid rgba(255,255,255,0.3)',
+  },
+  rosterTitle: {
+    color: 'white',
+    margin: '0 0 12px 0',
+    fontSize: '16px',
+    fontWeight: '700',
+  },
+  rosterList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  rosterRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '10px 14px',
+    borderRadius: '8px',
+  },
+  rosterName: {
+    fontWeight: '600',
+    color: '#374151',
+    fontSize: '14px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  youBadge: {
+    fontSize: '10px',
+    background: '#667eea',
+    color: 'white',
+    padding: '2px 6px',
+    borderRadius: '4px',
+    fontWeight: 'bold',
+  },
+  rosterStatus: {
+    fontSize: '13px',
+    fontWeight: '600',
   },
   instructions: {
     background: 'rgba(255,255,255,0.15)',

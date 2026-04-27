@@ -66,6 +66,16 @@ function App() {
     clearGame();
   };
 
+  const handleServerChange = () => {
+    const p = getPlayer();
+    setPlayer(p);
+    if (!p) {
+      clearGame();
+      setCurrentGameId(null);
+      setCurrentView('lobby');
+    }
+  };
+
   // Not registered - show registration
   if (!player) {
     return <RegisterPlayer onRegisterSuccess={handleRegisterSuccess} />;
@@ -108,6 +118,7 @@ function App() {
       onJoinGame={handleJoinGame}
       onViewGame={handleViewGame}
       onRejoinGame={handleRejoinGame}
+      onServerChange={handleServerChange}
       myGames={getMyGames()}
     />
   );

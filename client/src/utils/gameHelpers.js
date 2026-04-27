@@ -38,6 +38,15 @@ export const findShipAt = (ships, row, col) => {
 };
 
 /**
+ * Check whether every cell in a ship group is sunk
+ */
+export const isGroupSunk = (ships, groupId) => {
+  if (!ships || !Array.isArray(ships)) return false;
+  const groupCells = ships.filter(s => s.group_id === groupId);
+  return groupCells.length > 0 && groupCells.every(s => s.is_sunk);
+};
+
+/**
  * Get cell state for rendering
  * @returns {string} 'empty' | 'ship' | 'hit' | 'miss' | 'sunk'
  */
@@ -46,8 +55,12 @@ export const getCellState = (row, col, ships, moves, playerId, isOwnBoard) => {
   const ship = findShipAt(ships, row, col);
 
   if (move) {
-    if (move.result === 'hit') {
-      return ship && ship.is_sunk ? 'sunk' : 'hit';
+    if (move.result === 'hit' || move.result === 'sunk') {
+      // Show 'sunk' only when the entire ship group is destroyed
+      if (ship && isGroupSunk(ships, ship.group_id)) {
+        return 'sunk';
+      }
+      return 'hit';
     }
     return 'miss';
   }

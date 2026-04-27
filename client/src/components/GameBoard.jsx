@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { getGame, getMoves, fireMissile } from '../services/api';
+import { useState, useEffect, useRef } from 'react';
+import { getGame, getMoves, fireMissile, sonarScan, surrenderGame } from '../services/api';
 import { getPlayer } from '../utils/localStorage';
 import { formatCoordinate } from '../utils/gridHelpers';
 import { getCellState, isPlayersTurn, getWinner } from '../utils/gameHelpers';
@@ -15,22 +15,29 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
   const [fireResult, setFireResult] = useState(null);   // { result, coord, ship_sunk, sunk_ship_size }
   const [sunkSplash, setSunkSplash] = useState(null);   // { size, coord } shown for 2.5s
   const [prevMoveCount, setPrevMoveCount] = useState(0); // defender notification tracking
+  const [sonarMode, setSonarMode] = useState(false);     // sonar targeting active
+  const [sonarHover, setSonarHover] = useState(null);    // { row, col } hovered cell while in sonar mode
+  const [sonarResults, setSonarResults] = useState(null); // { cells, hasSignal, shipCells }
+  const [showSurrenderModal, setShowSurrenderModal] = useState(false);
 
   const player = getPlayer();
   const [myTurnOrder, setMyTurnOrder] = useState(null);
+  const intervalRef = useRef(null);
 
   useEffect(() => {
     fetchGameData();
     
     // Poll every 2 seconds for updates
-    const interval = setInterval(fetchGameData, 2000);
+    intervalRef.current = setInterval(fetchGameData, 2000);
     
-    return () => clearInterval(interval);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, [gameId]);
 
   const fetchGameData = async () => {
     // Fetch game state
-    const { data: gameData, error: gameError } = await getGame(gameId);
+    const { data: gameData, error: gameError } = await getGame(gameId, player?.playerId);
     
     if (gameData) {
       setGame(gameData);
@@ -43,9 +50,13 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
         }
       }
       
-      // Check if game is finished
+      // Check if game is finished — stop polling immediately
       const winner = getWinner(gameData);
       if (winner !== null) {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
         onGameOver(winner);
       }
     } else {
@@ -76,16 +87,17 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
     setLoading(false);
   };
 
-  const handleFire = async (row, col) => {
+  const handleFire = async (row, col, targetPlayerId) => {
     if (firing) return;
     
     setFiring(true);
     setError('');
 
     const { data, error: apiError } = await fireMissile(
-      gameId, 
-      player.playerId, 
-      row, 
+      gameId,
+      player.playerId,
+      targetPlayerId,
+      row,
       col
     );
 
@@ -116,12 +128,66 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
     setFiring(false);
   };
 
+  const handleSonar = async (row, col) => {
+    if (firing) return;
+    setSonarMode(false);
+    setSonarHover(null);
+    setFiring(true);
+    setError('');
+
+    const { data, error: apiError } = await sonarScan(gameId, player.playerId, row, col);
+
+    if (data) {
+      setSonarResults({ cells: data.scan_cells, hasSignal: data.has_signal, shipCells: data.ship_cells || [] });
+      const msg = data.has_signal ? '📡 Signal detected in scan area!' : '📡 Nothing in range';
+      setFireResult({ result: 'sonar', coord: msg, ship_sunk: false, sunk_ship_size: null });
+      setTimeout(() => setFireResult(null), 3000);
+      setTimeout(() => setSonarResults(null), 4000);
+      fetchGameData();
+    } else {
+      setError(apiError);
+    }
+
+    setFiring(false);
+  };
+
+  const handleSurrender = async () => {
+    setShowSurrenderModal(false);
+    const { data, error: apiError } = await surrenderGame(gameId, player.playerId);
+    if (data) {
+      if (data.game_status === 'finished') {
+        onGameOver(data.winner_id);
+      } else {
+        fetchGameData();
+      }
+    } else {
+      setError(apiError);
+    }
+  };
+
+  // Compute scan shape cells from a hover center — mirrors backend logic
+  const getScanCells = (centerRow, centerCol, gridSize) => {
+    const offsets = gridSize < 10
+      ? [[0,0],[-1,0],[1,0],[0,-1],[0,1]]
+      : [[-1,-1],[-1,0],[-1,1],[0,-1],[0,0],[0,1],[1,-1],[1,0],[1,1]];
+    return offsets
+      .map(([dr, dc]) => ({ row: centerRow + dr, col: centerCol + dc }))
+      .filter(c => c.row >= 0 && c.row < gridSize && c.col >= 0 && c.col < gridSize);
+  };
+
   const renderBoard = (boardPlayer, isMyBoard) => {
     if (!game) return null;
 
-    const ships = isMyBoard && boardPlayer.ships ? boardPlayer.ships : [];
+    // Own board: show all ships. Opponent board: backend returns sunk cells only.
+    const ships = boardPlayer.ships || [];
     const canClick = !isMyBoard && isMyTurn && !firing && !boardPlayer.is_eliminated;
-    
+    const canSonar = sonarMode && !isMyBoard && !boardPlayer.is_eliminated;
+
+    // Hover preview — shape to show before the player commits a sonar click
+    const sonarPreviewCells = (canSonar && sonarHover && !sonarResults)
+      ? getScanCells(sonarHover.row, sonarHover.col, game.grid_size)
+      : [];
+
     return (
       <div style={styles.singleBoard}>
         <div style={styles.boardHeader}>
@@ -168,6 +234,33 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
                   );
                   
                   const alreadyFired = ['hit', 'miss', 'sunk'].includes(cellState);
+
+                  // Sonar overlays — priority: ship > signal/scanned > preview-center > preview
+                  let sonarResult = null;
+                  if (!isMyBoard && sonarResults) {
+                    const inScan = sonarResults.cells.some(c => c.row === row && c.col === col);
+                    if (inScan) {
+                      sonarResult = sonarResults.hasSignal ? 'signal' : 'scanned';
+                    }
+                    // Ship cells revealed by sonar override the generic signal colour
+                    if (sonarResults.shipCells && sonarResults.shipCells.some(c => c.row === row && c.col === col)) {
+                      sonarResult = 'ship';
+                    }
+                  }
+                  // Hover preview shape (only before firing, no result displayed yet)
+                  if (!sonarResult && sonarPreviewCells.length) {
+                    const inPreview = sonarPreviewCells.some(c => c.row === row && c.col === col);
+                    if (inPreview) {
+                      sonarResult = (row === sonarHover.row && col === sonarHover.col)
+                        ? 'preview-center'
+                        : 'preview';
+                    }
+                  }
+
+                  const clickHandler = canSonar
+                    ? () => handleSonar(row, col)
+                    : (canClick && !alreadyFired ? () => handleFire(row, col, boardPlayer.player_id) : undefined);
+
                   return (
                     <GridCell
                       key={`cell-${row}-${col}`}
@@ -175,8 +268,10 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
                       col={col}
                       state={cellState}
                       size={35}
-                      disabled={!canClick || alreadyFired}
-                      onClick={canClick && !alreadyFired ? () => handleFire(row, col) : undefined}
+                      disabled={canSonar ? false : (!canClick || alreadyFired)}
+                      onClick={clickHandler}
+                      sonarResult={sonarResult}
+                      onCellHover={canSonar ? (r, c) => setSonarHover(r !== null ? { row: r, col: c } : null) : undefined}
                     />
                   );
                 })}
@@ -219,6 +314,28 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
 
   return (
     <div style={styles.container}>
+      {/* Surrender Confirmation Modal */}
+      {showSurrenderModal && (
+        <div style={styles.sunkOverlay}>
+          <div style={{ ...styles.sunkSplashBox, pointerEvents: 'all' }}>
+            <div style={{ fontSize: '48px' }}>⚠️</div>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#7f1d1d', marginBottom: '12px' }}>Surrender?</div>
+            <p style={{ color: '#6b7280', marginBottom: '24px', fontSize: '15px' }}>
+              Are you sure? You will lose this game. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button
+                onClick={handleSurrender}
+                style={{ padding: '12px 28px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer' }}
+              >Yes, Surrender</button>
+              <button
+                onClick={() => setShowSurrenderModal(false)}
+                style={{ padding: '12px 28px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer' }}
+              >Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Sunk Splash Overlay */}
       {sunkSplash && (
         <div style={styles.sunkOverlay}>
@@ -241,15 +358,18 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
             backgroundColor:
               fireResult.result === 'hit'      ? '#fee2e2' :
               fireResult.result === 'miss'     ? '#f3f4f6' :
+              fireResult.result === 'sonar'    ? '#fef3c7' :
               fireResult.result === 'defender' ? '#fef3c7' : '#f3f4f6',
             borderColor:
               fireResult.result === 'hit'      ? '#f87171' :
               fireResult.result === 'miss'     ? '#d1d5db' :
+              fireResult.result === 'sonar'    ? '#fbbf24' :
               fireResult.result === 'defender' ? '#fbbf24' : '#d1d5db',
           }}>
             {fireResult.result === 'hit' && !fireResult.ship_sunk && `🎯 HIT at ${fireResult.coord}!`}
             {fireResult.result === 'hit' && fireResult.ship_sunk  && `💀 SUNK! ${fireResult.sunk_ship_size}-cell ship destroyed at ${fireResult.coord}!`}
             {fireResult.result === 'miss'     && `💨 Miss at ${fireResult.coord}`}
+            {fireResult.result === 'sonar'    && fireResult.coord}
             {fireResult.result === 'defender' && `⚠️ Enemy hit your ship at ${fireResult.coord}!`}
           </div>
         )}
@@ -266,20 +386,52 @@ function GameBoard({ gameId, onGameOver, onBackToLobby }) {
           <button onClick={onBackToLobby} style={styles.backBtn}>
             ← Back to Lobby
           </button>
+          <button
+            onClick={() => setShowSurrenderModal(true)}
+            style={{ ...styles.backBtn, background: 'rgba(239,68,68,0.8)', borderColor: '#ef4444', marginLeft: '8px' }}
+          >
+            🏳️ Surrender
+          </button>
         </div>
 
-        {/* Turn Indicator */}
-        <div 
-          className={isMyTurn ? 'pulse-animation' : ''}
-          style={{
-            ...styles.turnIndicator,
-            backgroundColor: isMyTurn ? '#10b981' : '#f59e0b',
-          }}
-        >
-          {isMyTurn ? (
-            <span>🎯 YOUR TURN! Click on an opponent's board to fire</span>
-          ) : (
-            <span>⏳ Waiting for {currentTurnPlayer?.username || `Player ${currentTurnPlayer?.player_id}`}...</span>
+        {/* Turn Indicator + Sonar Button */}
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'stretch', marginBottom: '20px' }}>
+          <div 
+            className={isMyTurn ? 'pulse-animation' : ''}
+            style={{
+              ...styles.turnIndicator,
+              flex: 1,
+              marginBottom: 0,
+              backgroundColor: isMyTurn ? '#10b981' : '#f59e0b',
+            }}
+          >
+            {sonarMode ? (
+              <span>📡 SONAR MODE — click an opponent cell to scan</span>
+            ) : isMyTurn ? (
+              <span>🎯 YOUR TURN! Click on an opponent’s board to fire</span>
+            ) : (
+              <span>⏳ Waiting for {currentTurnPlayer?.username || `Player ${currentTurnPlayer?.player_id}`}...</span>
+            )}
+          </div>
+
+          {/* Sonar button — only in sonar mode games, on my turn, and if not yet used */}
+          {game.game_mode === 'sonar' && isMyTurn && !myPlayer?.sonar_used && (
+            <button
+              onClick={() => { setSonarMode(m => { if (m) setSonarHover(null); return !m; }); }}
+              style={{
+                padding: '0 20px',
+                background: sonarMode ? '#f59e0b' : '#fbbf24',
+                border: '2px solid #f59e0b',
+                borderRadius: '10px',
+                fontWeight: 'bold',
+                fontSize: '16px',
+                cursor: 'pointer',
+                color: '#1e1b4b',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              📡 {sonarMode ? 'Cancel Scan' : 'Use Sonar'}
+            </button>
           )}
         </div>
 

@@ -105,3 +105,40 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* ─── Game animations ─────────────────────────────────────── */
+
+@keyframes hitPulse {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+@keyframes missWobble {
+  0%, 100% { transform: rotate(0deg); }
+  25%       { transform: rotate(-12deg); }
+  75%       { transform: rotate(12deg); }
+}
+
+@keyframes sunkShake {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-7px); }
+  40%       { transform: translateX(7px); }
+  60%       { transform: translateX(-4px); }
+  80%       { transform: translateX(4px); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45); }
+  50%       { box-shadow: 0 0 0 12px rgba(16, 185, 129, 0); }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(120%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.cell-hit-animation  { animation: hitPulse   0.4s ease-out; }
+.cell-miss-animation { animation: missWobble 0.4s ease-out; }
+.cell-sunk-animation { animation: sunkShake  0.5s ease-out; }
+.pulse-animation     { animation: pulseGlow  2s infinite;   }
