@@ -27,9 +27,10 @@ requireFields($data, ['player_id', 'row', 'col']);
 $playerId = (int)$data['player_id'];
 $row = (int)$data['row'];
 $col = (int)$data['col'];
+$requestedTargetId = isset($data['target_player_id']) ? (int)$data['target_player_id'] : null;
 
 try {
-    $result = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $row, $col) {
+    $result = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $row, $col, $requestedTargetId) {
         
         // Lock game row for update
         $stmt = $pdo->prepare("SELECT * FROM Games WHERE game_id = ? FOR UPDATE");
@@ -65,16 +66,6 @@ try {
             forbidden('Not your turn');
         }
         
-        // Check if already fired at this cell - 409 Conflict
-        $stmt = $pdo->prepare("
-            SELECT move_id FROM Moves 
-            WHERE game_id = ? AND player_id = ? AND row = ? AND col = ?
-        ");
-        $stmt->execute([$gameId, $playerId, $row, $col]);
-        if ($stmt->fetch()) {
-            jsonResponse(['error' => 'Cell already targeted'], 409);
-        }
-        
         // Get all active (non-eliminated) players except current player
         $stmt = $pdo->prepare("
             SELECT player_id, turn_order 
@@ -88,9 +79,28 @@ try {
             badRequest('No valid targets');
         }
         
-        // Select random target
-        $targetPlayer = $targets[array_rand($targets)];
-        $targetPlayerId = (int)$targetPlayer['player_id'];
+        // Resolve target: use provided target_player_id, or auto-select for 2-player games
+        if ($requestedTargetId !== null) {
+            $validIds = array_column($targets, 'player_id');
+            if (!in_array($requestedTargetId, $validIds)) {
+                badRequest('Invalid target player');
+            }
+            $targetPlayerId = $requestedTargetId;
+        } elseif (count($targets) === 1) {
+            $targetPlayerId = (int)$targets[0]['player_id'];
+        } else {
+            badRequest('target_player_id is required when multiple opponents are present');
+        }
+        
+        // Prevent firing at the same coordinate on the same opponent twice
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM Moves
+            WHERE game_id = ? AND target_player_id = ? AND row = ? AND col = ?
+        ");
+        $stmt->execute([$gameId, $targetPlayerId, $row, $col]);
+        if ((int)$stmt->fetchColumn() > 0) {
+            badRequest('Already fired at that coordinate');
+        }
         
         // Check if hit or miss
         $stmt = $pdo->prepare("

@@ -1,9 +1,32 @@
 import { useState, useEffect } from 'react';
-import { getAllGames, getMyGames, searchGameById, createGame, joinGame, getPlayerStats, getAllPlayers, updatePlayer } from '../services/api';
-import { getPlayer, clearPlayer } from '../utils/localStorage';
+import { getAllGames, getMyGames, searchGameById, createGame, joinGame, getPlayerStats, getAllPlayers, updatePlayer, testConnection } from '../services/api';
+import { getPlayer, clearPlayer, getActiveServer, setActiveServer } from '../utils/localStorage';
 import LeaderboardModal from './LeaderboardModal';
 
-function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
+const KNOWN_SERVERS = [
+  { name: 'Team0x0D — Vibe Hunter (Ours)', url: 'https://vibe-hunter.com' },
+  { name: 'Team0x00 — Team0x00', url: 'https://battleship-server-18q1.onrender.com' },
+  { name: 'Team0x01 — Max Koon', url: 'https://battleship.koon.us' },
+  { name: 'Team0x02 — Mir Patel', url: 'https://finalproject-virusoutbreak-3bwa.onrender.com' },
+  { name: 'Team0x03 — Anthony Martino', url: 'https://finalproject3750.onrender.com' },
+  { name: 'Team0x04 — Evan Racz', url: 'https://webdevgroupproj.onrender.com' },
+  { name: 'Team0x05 — Mason McLaw Price', url: 'https://cpsc3720finalproject.onrender.com' },
+  { name: 'Team0x06 — Jude Slade', url: 'https://three750final.onrender.com' },
+  { name: 'Team0x07 — Owen Schuyler', url: 'https://persistent-waters.onrender.com' },
+  { name: 'Team0x08 — Nathan Kitchens ✅', url: 'https://p01--backend--zm8jxh5c8bph.code.run' },
+  { name: 'Team0x09 — Taylor Carter ✅', url: 'https://lightslategray-dogfish-869967.hostingersite.com' },
+  { name: 'Team0x0A — Anabel Thompson', url: 'https://battleship-1-qpm6.onrender.com' },
+  { name: 'Team0x0B — Bryce Dickson', url: 'https://cpsc.loosesocket.com' },
+  { name: 'Team0x0C — Aryan Kapoor', url: 'https://battleship-advanced.onrender.com' },
+  { name: 'Team0x0E — Andrew Hwang', url: 'https://cpsc3750-battleshipproject.onrender.com' },
+  { name: 'Team0x0F — Anthony Frialde', url: 'https://cpsc-3750-battleship-final-project-phase1.onrender.com' },
+  { name: 'Team0x10 — Justin Hooker', url: 'https://capstone3750-production.up.railway.app' },
+  { name: 'Team0x11 — Ayden Sabol', url: 'https://battleship-cpsc3750.onrender.com' },
+  { name: 'Team0x12 — Jack Stivers', url: 'https://final-project-7xwd.onrender.com' },
+  { name: 'Custom / Other Team', url: '' },
+];
+
+function Lobby({ onJoinGame, onViewGame, onRejoinGame, onServerChange, myGames = [] }) {
   const [games, setGames] = useState([]);
   const [stats, setStats] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -16,6 +39,14 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [copySuccess, setCopySuccess] = useState(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  // Game mode
+  const [gameMode, setGameMode] = useState('standard');
+  // Server switcher
+  const [activeServer, setActiveServerState] = useState(getActiveServer());
+  const [serverInput, setServerInput] = useState('');
+  const [selectedKnown, setSelectedKnown] = useState(KNOWN_SERVERS[0].url);
+  const [serverStatus, setServerStatus] = useState(null); // null | 'testing' | 'ok' | 'error'
   
   const player = getPlayer();
 
@@ -30,13 +61,20 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
     return () => clearInterval(interval);
   }, [showMyGamesOnly, searchQuery]);
 
+  const toGamesArray = (data) => {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.games)) return data.games;
+    if (data && Array.isArray(data.data)) return data.data;
+    return [];
+  };
+
   const fetchGames = async () => {
     // If searching by game ID
     if (searchQuery.trim()) {
       const gameId = parseInt(searchQuery.trim());
       if (!isNaN(gameId)) {
         const { data } = await searchGameById(gameId);
-        if (data) setGames(data);
+        if (data) setGames(toGamesArray(data));
       }
       return;
     }
@@ -44,11 +82,11 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
     // If filtering to show only my games
     if (showMyGamesOnly && player) {
       const { data } = await getMyGames(player.playerId);
-      if (data) setGames(data);
+      if (data) setGames(toGamesArray(data));
     } else {
       // Default: show all games
       const { data } = await getAllGames();
-      if (data) setGames(data);
+      if (data) setGames(toGamesArray(data));
     }
   };
 
@@ -88,11 +126,15 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
       setError('At least 2 players are required to start a game.');
       return;
     }
+    if (gameMode === 'sonar' && gridSize < 8) {
+      setError('Sonar mode requires a grid size of at least 8.');
+      return;
+    }
     setLoading(true);
     setError('');
 
     // Fixed: Pass creator_id to API
-    const { data, error: apiError } = await createGame(gridSize, maxPlayers, player.playerId);
+    const { data, error: apiError } = await createGame(gridSize, maxPlayers, player.playerId, gameMode);
 
     if (data) {
       fetchGames();
@@ -102,6 +144,26 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
       setError(apiError);
     }
     setLoading(false);
+  };
+
+  const handleTestServer = async () => {
+    const url = serverInput.trim() || selectedKnown;
+    if (!url) return;
+    setServerStatus('testing');
+    const { data, error } = await testConnection(url);
+    setServerStatus(data ? 'ok' : 'error');
+  };
+
+  const handleConnectServer = () => {
+    const url = serverInput.trim() || selectedKnown;
+    if (!url) return;
+    setActiveServer(url);
+    setActiveServerState(url);
+    setServerStatus(null);
+    fetchGames();
+    fetchLeaderboard();
+    // Notify App to re-check if we have a player registered on this server
+    onServerChange?.();
   };
 
   const handleJoinGame = async (gameId) => {
@@ -163,6 +225,15 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
               🏆 Leaderboard
             </button>
             <button
+              onClick={() => setShowStats(true)}
+              style={styles.trophyBtn}
+              onMouseEnter={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = '#667eea'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'white'; }}
+              title="View My Stats"
+            >
+              📊 My Stats
+            </button>
+            <button
               onClick={handleLogout}
               style={styles.logoutBtn}
               onMouseEnter={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = '#667eea'; }}
@@ -221,36 +292,132 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
         <div style={styles.mainGrid}>
           {/* Left Column - Create Game & Stats */}
           <div style={styles.leftColumn}>
+            {/* Server Switcher Card */}
+            <div style={styles.card}>
+              <h2 style={styles.cardTitle}>🌐 Server</h2>
+              <div style={{ marginBottom: '10px' }}>
+                <label style={styles.label}>Known Servers:</label>
+                <select
+                  value={selectedKnown}
+                  onChange={e => { setSelectedKnown(e.target.value); setServerInput(''); }}
+                  style={{ ...styles.input, marginBottom: '8px' }}
+                >
+                  {KNOWN_SERVERS.map(s => (
+                    <option key={s.url} value={s.url}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginBottom: '10px' }}>
+                <label style={styles.label}>Custom URL:</label>
+                <input
+                  type="text"
+                  placeholder="https://other-team.com"
+                  value={serverInput}
+                  onChange={e => setServerInput(e.target.value)}
+                  style={styles.input}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                <button
+                  onClick={handleTestServer}
+                  disabled={serverStatus === 'testing'}
+                  style={{ ...styles.createBtn, flex: 1, background: '#6b7280', padding: '10px' }}
+                >
+                  {serverStatus === 'testing' ? '⏳ Testing...' : '🔌 Test'}
+                </button>
+                <button
+                  onClick={handleConnectServer}
+                  style={{ ...styles.createBtn, flex: 1, padding: '10px' }}
+                >
+                  ✓ Connect
+                </button>
+              </div>
+              {serverStatus === 'ok' && (
+                <div style={{ color: '#10b981', fontWeight: '600', fontSize: '13px' }}>✅ Server reachable</div>
+              )}
+              {serverStatus === 'error' && (
+                <div style={{ color: '#ef4444', fontWeight: '600', fontSize: '13px' }}>❌ Server unreachable</div>
+              )}
+              <div style={{ marginTop: '10px', fontSize: '12px', color: '#6b7280' }}>
+                Active: <strong style={{ color: '#667eea' }}>{activeServer}</strong>
+              </div>
+            </div>
+
             {/* Create Game Card */}
             <div style={styles.card}>
               <h2 style={styles.cardTitle}>🎯 Create New Game</h2>
               <form onSubmit={handleCreateGame}>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Grid Size (5-15):</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' }}>
+                    <label style={styles.label}>Grid Size:</label>
+                    <span style={{ fontSize: '26px', fontWeight: '800', color: '#667eea', lineHeight: 1 }}>{gridSize}<span style={{ fontSize: '14px', color: '#9ca3af', fontWeight: '600' }}>×{gridSize}</span></span>
+                  </div>
                   <input
-                    type="number"
-                    min="5"
+                    type="range"
+                    min={gameMode === 'sonar' ? 8 : 5}
                     max="15"
                     value={gridSize}
                     onChange={(e) => setGridSize(parseInt(e.target.value))}
-                    style={styles.input}
                     disabled={loading}
+                    style={{ width: '100%', accentColor: '#667eea', cursor: loading ? 'not-allowed' : 'pointer', height: '6px' }}
                   />
-                  <small style={styles.hint}>A {gridSize}×{gridSize} grid with 3 ships</small>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                    <span>{gameMode === 'sonar' ? 8 : 5}</span>
+                    <span>15</span>
+                  </div>
                 </div>
 
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Max Players (2-4):</label>
-                  <input
-                    type="number"
-                    min="2"
-                    max="4"
-                    value={maxPlayers}
-                    onChange={(e) => setMaxPlayers(parseInt(e.target.value))}
-                    style={styles.input}
-                    disabled={loading}
-                  />
-                  <small style={styles.hint}>Battle with up to {maxPlayers} players</small>
+                  <label style={styles.label}>Game Mode:</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setGameMode('standard')}
+                      style={{
+                        flex: 1, padding: '10px 8px', borderRadius: '8px', border: '2px solid',
+                        borderColor: gameMode === 'standard' ? '#667eea' : '#9ca3af',
+                        background: gameMode === 'standard' ? '#667eea' : '#f3f4f6',
+                        color: gameMode === 'standard' ? 'white' : '#374151',
+                        fontWeight: '600', fontSize: '14px', cursor: 'pointer',
+                      }}
+                    >⚔️ Standard</button>
+                    <button
+                      type="button"
+                      onClick={() => { setGameMode('sonar'); if (gridSize < 8) setGridSize(8); }}
+                      style={{
+                        flex: 1, padding: '10px 8px', borderRadius: '8px', border: '2px solid',
+                        borderColor: gameMode === 'sonar' ? '#f59e0b' : '#9ca3af',
+                        background: gameMode === 'sonar' ? '#f59e0b' : '#f3f4f6',
+                        color: gameMode === 'sonar' ? 'white' : '#374151',
+                        fontWeight: '600', fontSize: '14px', cursor: 'pointer',
+                      }}
+                    >📡 Sonar</button>
+                  </div>
+                  {gameMode === 'sonar' && (
+                    <small style={{ ...styles.hint, color: '#f59e0b' }}>Sonar requires grid ≥ 8. Each player gets one scan.</small>
+                  )}
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Max Players:</label>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                    {[2, 3, 4].map(n => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setMaxPlayers(n)}
+                        disabled={loading}
+                        style={{
+                          flex: 1, padding: '12px 0', borderRadius: '8px', border: '2px solid',
+                          borderColor: maxPlayers === n ? '#667eea' : '#9ca3af',
+                          background: maxPlayers === n ? '#667eea' : '#f3f4f6',
+                          color: maxPlayers === n ? 'white' : '#374151',
+                          fontWeight: '700', fontSize: '20px', cursor: loading ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.15s',
+                        }}
+                      >{n}</button>
+                    ))}
+                  </div>
                 </div>
 
                 {error && <div style={styles.errorBox}>⚠️ {error}</div>}
@@ -269,74 +436,8 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
               </form>
             </div>
 
-            {/* Stats Card */}
-            <div style={styles.card}>
-              <h2 style={styles.cardTitle}>📊 Your Stats</h2>
-              {stats ? (
-                <div style={styles.statsGrid}>
-                  <div style={styles.statBox}>
-                    <div style={styles.statValue}>{stats.games_played || 0}</div>
-                    <div style={styles.statLabel}>Games</div>
-                  </div>
-                  <div style={styles.statBox}>
-                    <div style={{...styles.statValue, color: '#10b981'}}>{stats.wins || 0}</div>
-                    <div style={styles.statLabel}>Wins</div>
-                  </div>
-                  <div style={styles.statBox}>
-                    <div style={{...styles.statValue, color: '#ef4444'}}>{stats.losses || 0}</div>
-                    <div style={styles.statLabel}>Losses</div>
-                  </div>
-                  <div style={styles.statBox}>
-                    <div style={{
-                      ...styles.statValue,
-                      color: (stats.accuracy ?? 0) >= 0.6 ? '#10b981' : (stats.accuracy ?? 0) >= 0.4 ? '#f59e0b' : '#6b7280'
-                    }}>
-                      {stats.accuracy != null ? (stats.accuracy * 100).toFixed(1) : '0.0'}%
-                    </div>
-                    <div style={styles.statLabel}>Accuracy</div>
-                  </div>
-                </div>
-              ) : (
-                <p style={styles.noStats}>🎲 No stats yet - create your first game!</p>
-              )}
-
-              {stats && (
-                <div style={{ marginTop: '16px', borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
-                  <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px', fontWeight: '600' }}>
-                    Leaderboard display:
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => hideUsername && handleToggleAnonymity(false)}
-                      style={{
-                        padding: '6px 14px', borderRadius: '20px', border: 'none',
-                        cursor: hideUsername ? 'pointer' : 'default',
-                        background: !hideUsername ? '#667eea' : '#e5e7eb',
-                        color: !hideUsername ? 'white' : '#6b7280',
-                        fontWeight: '600', fontSize: '13px',
-                      }}
-                    >
-                      👤 My Username
-                    </button>
-                    <button
-                      onClick={() => !hideUsername && handleToggleAnonymity(true)}
-                      style={{
-                        padding: '6px 14px', borderRadius: '20px', border: 'none',
-                        cursor: !hideUsername ? 'pointer' : 'default',
-                        background: hideUsername ? '#667eea' : '#e5e7eb',
-                        color: hideUsername ? 'white' : '#6b7280',
-                        fontWeight: '600', fontSize: '13px',
-                      }}
-                    >
-                      🕵️ Anonymous
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
 
-          {/* Right Column - Games List */}
           <div style={styles.rightColumn}>
             <div style={styles.card}>
               <h2 style={styles.cardTitle}>
@@ -395,6 +496,9 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
                               Game #{game.game_id}
                               {isMyGame && (
                                 <span style={styles.yourGameBadge}>YOUR GAME</span>
+                              )}
+                              {game.game_mode === 'sonar' && (
+                                <span style={{ ...styles.yourGameBadge, background: '#f59e0b' }}>📡 SONAR</span>
                               )}
                             </h3>
                             <p style={styles.gameInfo}>
@@ -464,6 +568,63 @@ function Lobby({ onJoinGame, onViewGame, onRejoinGame, myGames = [] }) {
           leaderboard={leaderboard} 
           onClose={() => setShowLeaderboard(false)} 
         />
+      )}
+
+      {/* Stats Modal */}
+      {showStats && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+          onClick={() => setShowStats(false)}
+        >
+          <div
+            style={{ background: 'white', borderRadius: '16px', padding: '32px', width: '360px', maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <h2 style={{ margin: 0, color: '#667eea', fontSize: '22px', fontWeight: '700' }}>📊 My Stats</h2>
+              <button onClick={() => setShowStats(false)} style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: '#6b7280', lineHeight: 1 }}>✕</button>
+            </div>
+            {stats ? (
+              <div style={styles.statsGrid}>
+                <div style={styles.statBox}>
+                  <div style={styles.statValue}>{stats.games_played || 0}</div>
+                  <div style={styles.statLabel}>Games</div>
+                </div>
+                <div style={styles.statBox}>
+                  <div style={{ ...styles.statValue, color: '#10b981' }}>{stats.wins || 0}</div>
+                  <div style={styles.statLabel}>Wins</div>
+                </div>
+                <div style={styles.statBox}>
+                  <div style={{ ...styles.statValue, color: '#ef4444' }}>{stats.losses || 0}</div>
+                  <div style={styles.statLabel}>Losses</div>
+                </div>
+                <div style={styles.statBox}>
+                  <div style={{ ...styles.statValue, color: (stats.accuracy ?? 0) >= 0.6 ? '#10b981' : (stats.accuracy ?? 0) >= 0.4 ? '#f59e0b' : '#6b7280' }}>
+                    {stats.accuracy != null ? (stats.accuracy * 100).toFixed(1) : '0.0'}%
+                  </div>
+                  <div style={styles.statLabel}>Accuracy</div>
+                </div>
+              </div>
+            ) : (
+              <p style={{ color: '#9ca3af', textAlign: 'center' }}>🎲 No stats yet — create your first game!</p>
+            )}
+            {stats && (
+              <div style={{ marginTop: '20px', borderTop: '1px solid #e5e7eb', paddingTop: '20px' }}>
+                <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '10px', fontWeight: '600' }}>Leaderboard display:</div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => hideUsername && handleToggleAnonymity(false)}
+                    style={{ flex: 1, padding: '8px 0', borderRadius: '20px', border: 'none', cursor: hideUsername ? 'pointer' : 'default', background: !hideUsername ? '#667eea' : '#e5e7eb', color: !hideUsername ? 'white' : '#6b7280', fontWeight: '600', fontSize: '13px' }}
+                  >👤 My Username</button>
+                  <button
+                    onClick={() => !hideUsername && handleToggleAnonymity(true)}
+                    style={{ flex: 1, padding: '8px 0', borderRadius: '20px', border: 'none', cursor: !hideUsername ? 'pointer' : 'default', background: hideUsername ? '#667eea' : '#e5e7eb', color: hideUsername ? 'white' : '#6b7280', fontWeight: '600', fontSize: '13px' }}
+                  >🕵️ Anonymous</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

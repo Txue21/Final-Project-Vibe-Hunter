@@ -64,6 +64,7 @@ function RegisterPlayer({ onRegisterSuccess }) {
               maxLength={12}
               style={styles.input}
               disabled={loading}
+              autoComplete="off"
             />
           </div>
 

@@ -1,11 +1,23 @@
 export const savePlayer = (playerId, username) => {
-  localStorage.setItem('player_id', playerId);
-  localStorage.setItem('username', username);
+  const server = getActiveServer();
+  localStorage.setItem(`player_id__${server}`, playerId);
+  localStorage.setItem(`username__${server}`, username);
 };
 
 export const getPlayer = () => {
-  const playerId = localStorage.getItem('player_id');
-  const username = localStorage.getItem('username');
+  const server = getActiveServer();
+  let playerId = localStorage.getItem(`player_id__${server}`);
+  let username = localStorage.getItem(`username__${server}`);
+
+  // Legacy migration: if on default server and no server-scoped key yet, migrate old global keys
+  if (!playerId && server === 'https://vibe-hunter.com') {
+    playerId = localStorage.getItem('player_id');
+    username = localStorage.getItem('username');
+    if (playerId && username) {
+      localStorage.setItem(`player_id__${server}`, playerId);
+      localStorage.setItem(`username__${server}`, username);
+    }
+  }
 
   if (playerId && username) {
     return { playerId: parseInt(playerId), username };
@@ -14,6 +26,10 @@ export const getPlayer = () => {
 };
 
 export const clearPlayer = () => {
+  const server = getActiveServer();
+  localStorage.removeItem(`player_id__${server}`);
+  localStorage.removeItem(`username__${server}`);
+  // Also clear legacy keys
   localStorage.removeItem('player_id');
   localStorage.removeItem('username');
 };
@@ -53,3 +69,15 @@ export const removeMyGame = (gameId) => {
   const list = getMyGames().filter(g => g.gameId !== gameId);
   localStorage.setItem('my_games', JSON.stringify(list));
 };
+
+// ── Server switcher ──────────────────────────────────────────────────────────
+const DEFAULT_SERVER = 'https://vibe-hunter.com';
+
+export const getActiveServer = () =>
+  localStorage.getItem('active_server') || DEFAULT_SERVER;
+
+export const setActiveServer = (url) =>
+  localStorage.setItem('active_server', url.replace(/\/$/, ''));
+
+export const clearActiveServer = () =>
+  localStorage.removeItem('active_server');

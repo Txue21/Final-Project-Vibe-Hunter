@@ -41,6 +41,10 @@ RewriteRule ^api/games/([0-9]+)/place/?$ api/games/place.php [L]
 RewriteRule ^api/games/([0-9]+)/fire/?$ api/games/fire.php [L]
 # GET /api/games/{id}/moves
 RewriteRule ^api/games/([0-9]+)/moves/?$ api/games/moves.php [L]
+# POST /api/games/{id}/sonar
+RewriteRule ^api/games/([0-9]+)/sonar/?$ api/games/sonar.php [L]
+# POST /api/games/{id}/surrender
+RewriteRule ^api/games/([0-9]+)/surrender/?$ api/games/surrender.php [L]
 
 # Test mode endpoints
 RewriteRule ^api/test/games/([0-9]+)/restart/?$ api/test/games/restart.php [L]

@@ -19,8 +19,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $creatorId = $data['creator_id'];
     $gridSize = (int)$data['grid_size'];
     $maxPlayers = (int)$data['max_players'];
+    $gameMode = (isset($data['game_mode']) && $data['game_mode'] === 'sonar') ? 'sonar' : 'standard';
     
     // Validate inputs
+    if ($gameMode === 'sonar' && $gridSize < 8) {
+        badRequest('Sonar mode requires grid size of at least 8');
+    }
+
     if (!isValidGridSize($gridSize)) {
         badRequest('Grid size must be between 5 and 15');
     }
@@ -36,13 +41,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     try {
-        $gameId = withTransaction($pdo, function($pdo) use ($creatorId, $gridSize, $maxPlayers) {
+        $gameId = withTransaction($pdo, function($pdo) use ($creatorId, $gridSize, $maxPlayers, $gameMode) {
             // Create game
             $stmt = $pdo->prepare("
-                INSERT INTO Games (creator_id, grid_size, max_players, status, current_turn_index, active_players)
-                VALUES (?, ?, ?, 'waiting', 0, 1)
+                INSERT INTO Games (creator_id, grid_size, max_players, status, current_turn_index, active_players, game_mode)
+                VALUES (?, ?, ?, 'waiting', 0, 1, ?)
             ");
-            $stmt->execute([$creatorId, $gridSize, $maxPlayers]);
+            $stmt->execute([$creatorId, $gridSize, $maxPlayers, $gameMode]);
             $gameId = $pdo->lastInsertId();
             
             // Auto-add creator to GamePlayers with turn_order = 0
@@ -156,6 +161,9 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             notFound('Game not found');
         }
         
+        // Optional: requesting player's ID to filter opponent ships
+        $requestingPlayerId = isset($_GET['player_id']) ? (int)$_GET['player_id'] : null;
+        
         // Get all players in this game with their details
         $stmt = $pdo->prepare("
             SELECT 
@@ -163,6 +171,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 gp.turn_order,
                 gp.ships_placed,
                 gp.is_eliminated,
+                gp.sonar_used,
                 p.username
             FROM GamePlayers gp
             JOIN Players p ON gp.player_id = p.player_id
@@ -178,12 +187,16 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $player['turn_order'] = (int)$player['turn_order'];
             $player['ships_placed'] = (bool)$player['ships_placed'];
             $player['is_eliminated'] = (bool)$player['is_eliminated'];
+            $player['sonar_used'] = (bool)$player['sonar_used'];
             
-            // Get ships for this player
+            // Own board: return all ships. Opponents: only return sunk cells.
+            $isOwnBoard = ($requestingPlayerId !== null && $player['player_id'] === $requestingPlayerId);
+            $shipFilter = ($requestingPlayerId !== null && !$isOwnBoard) ? "AND is_sunk = TRUE" : "";
+            
             $stmt = $pdo->prepare("
                 SELECT row, col, group_id, is_sunk
                 FROM Ships
-                WHERE game_id = ? AND player_id = ?
+                WHERE game_id = ? AND player_id = ? $shipFilter
             ");
             $stmt->execute([$gameId, $player['player_id']]);
             $ships = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -205,6 +218,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'current_turn_index' => (int)$game['current_turn_index'],
             'active_players' => (int)$game['active_players'],
             'winner_id' => $game['winner_id'] ? (int)$game['winner_id'] : null,
+            'game_mode' => $game['game_mode'] ?? 'standard',
             'players' => $players
         ], 200);
     } else {
