@@ -52,19 +52,22 @@ if (!is_array($ships)) {
     badRequest('ships must be an array');
 }
 
-list($valid, $error) = validateShips($ships, $game['grid_size']);
+// Validate ships — returns [valid, error, expandedCells]
+list($valid, $error, $expandedCells) = validateShips($ships, $game['grid_size']);
 if (!$valid) {
     badRequest($error);
 }
 
 try {
-    $gameStatus = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $ships) {
+    $gameStatus = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $expandedCells) {
+        // Insert all ship cells (each cell is one row; group_id links cells of the same ship)
         $stmt = $pdo->prepare("
-            INSERT INTO Ships (game_id, player_id, row, col, is_sunk)
-            VALUES (?, ?, ?, ?, FALSE)
+            INSERT INTO Ships (game_id, player_id, row, col, group_id, is_sunk)
+            VALUES (?, ?, ?, ?, ?, FALSE)
         ");
-        foreach ($ships as $ship) {
-            $stmt->execute([$gameId, $playerId, (int)$ship['row'], (int)$ship['col']]);
+
+        foreach ($expandedCells as $cell) {
+            $stmt->execute([$gameId, $playerId, $cell['row'], $cell['col'], $cell['group_id']]);
         }
         
         $stmt = $pdo->prepare("
@@ -84,9 +87,9 @@ try {
         
         $total  = (int)$counts['total'];
         $placed = (int)$counts['placed'];
-        
-        if ($total > 1 && $total === $placed) {
-            // All players placed — activate the game
+
+        if ($total >= 2 && $total === $placed) {
+            // All players have placed - activate the game
             $stmt = $pdo->prepare("UPDATE Games SET status = 'active' WHERE game_id = ?");
             $stmt->execute([$gameId]);
             return 'active';

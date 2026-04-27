@@ -7,6 +7,7 @@
 require_once __DIR__ . '/common.php';
 
 setCorsHeaders();
+requireTestMode();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     badRequest('Method not allowed');

@@ -23,61 +23,10 @@ $options = [
 
 try {
     $pdo = new PDO($dsn, $user, $pass, $options);
-    // Connection successful
 } catch (\PDOException $e) {
-    // Log error and return 500
     error_log("Database connection failed: " . $e->getMessage());
     http_response_code(500);
     echo json_encode(['error' => 'Database connection failed']);
     exit;
-}
-
-// ============================================
-// TRANSACTION HELPER FUNCTIONS
-// ============================================
-
-/**
- * Begin a database transaction
- * @param PDO $connection Database connection
- * @return bool Success status
- */
-function beginTransaction($connection) {
-    return $connection->beginTransaction();
-}
-
-/**
- * Commit a database transaction
- * @param PDO $connection Database connection
- * @return bool Success status
- */
-function commitTransaction($connection) {
-    return $connection->commit();
-}
-
-/**
- * Rollback a database transaction
- * @param PDO $connection Database connection
- * @return bool Success status
- */
-function rollbackTransaction($connection) {
-    return $connection->rollBack();
-}
-
-/**
- * Execute a prepared statement safely
- * @param PDO $connection Database connection
- * @param string $sql SQL query
- * @param array $params Parameters for prepared statement
- * @return PDOStatement Executed statement
- */
-function executeQuery($connection, $sql, $params = []) {
-    try {
-        $stmt = $connection->prepare($sql);
-        $stmt->execute($params);
-        return $stmt;
-    } catch (\PDOException $e) {
-        error_log("Query failed: " . $e->getMessage());
-        throw $e;
-    }
 }
 ?>

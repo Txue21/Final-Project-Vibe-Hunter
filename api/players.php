@@ -24,6 +24,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         badRequest('Username cannot be empty');
     }
 
+    if (strlen($username) < 3 || strlen($username) > 12) {
+        badRequest('Username must be between 3 and 12 characters');
+    }
+
     try {
         // Check if username already exists — if so, return existing player_id
         $stmt = $pdo->prepare("SELECT player_id FROM Players WHERE username = ?");
@@ -63,15 +67,16 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if (count($parts) === 2 && $parts[1] === 'players') {
         try {
             $stmt = $pdo->query("
-                SELECT 
+                SELECT
                     player_id,
                     username,
+                    hide_username,
                     games_played,
                     wins,
                     losses,
                     total_shots,
                     total_hits,
-                    CASE 
+                    CASE
                         WHEN total_shots > 0 THEN ROUND(total_hits / total_shots, 3)
                         ELSE 0.0
                     END as accuracy
@@ -83,6 +88,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             // Convert numeric fields to integers
             foreach ($players as &$player) {
                 $player['player_id'] = (int)$player['player_id'];
+                $player['username'] = $player['hide_username'] ? '🕵️ Anonymous' : $player['username'];
                 $player['games_played'] = (int)$player['games_played'];
                 $player['wins'] = (int)$player['wins'];
                 $player['losses'] = (int)$player['losses'];
@@ -112,15 +118,38 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             : 0.0;
 
         jsonResponse([
-            'games_played' => (int)$player['games_played'],
-            'wins'         => (int)$player['wins'],
-            'losses'       => (int)$player['losses'],
-            'total_shots'  => (int)$player['total_shots'],
-            'total_hits'   => (int)$player['total_hits'],
-            'accuracy'     => $accuracy
+            'games_played'  => (int)$player['games_played'],
+            'wins'          => (int)$player['wins'],
+            'losses'        => (int)$player['losses'],
+            'total_shots'   => (int)$player['total_shots'],
+            'total_hits'    => (int)$player['total_hits'],
+            'accuracy'      => $accuracy,
+            'hide_username' => (bool)$player['hide_username']
         ], 200);
     } else {
         badRequest('Invalid endpoint');
+    }
+}
+else if ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
+    // PATCH /api/players/{id} - Update player preferences
+    preg_match('#/api/players/(\d+)/?$#', $_SERVER['REQUEST_URI'], $m);
+    $playerId = isset($m[1]) ? (int)$m[1] : null;
+    if (!$playerId) {
+        badRequest('Player ID required');
+    }
+    if (!getPlayer($pdo, $playerId)) {
+        notFound('Player not found');
+    }
+    $data = getJsonBody();
+    requireFields($data, ['hide_username']);
+    $hide = $data['hide_username'] ? 1 : 0;
+    try {
+        $pdo->prepare('UPDATE Players SET hide_username = ? WHERE player_id = ?')
+            ->execute([$hide, $playerId]);
+        jsonResponse(['success' => true, 'hide_username' => (bool)$hide]);
+    } catch (PDOException $e) {
+        error_log("Failed to update player: " . $e->getMessage());
+        serverError('Failed to update player');
     }
 }
 else {

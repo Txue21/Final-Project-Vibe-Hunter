@@ -39,9 +39,10 @@ if (!$player) {
     forbidden('Invalid player ID');
 }
 
-// Check game status
-if ($game['status'] !== 'waiting') {
-    badRequest('Game is not accepting new players');
+// Check game status - accept 'waiting' or any variation with 'waiting' in it
+$status = strtolower(trim($game['status']));
+if ($status !== 'waiting' && strpos($status, 'waiting') === false && $status !== 'setup') {
+    badRequest('Game is not accepting new players (status: ' . $game['status'] . ')');
 }
 
 // Check if player already in game
@@ -50,7 +51,7 @@ if ($existingGamePlayer) {
     badRequest('Player already in this game');
 }
 
-// Check max players
+// Pre-flight capacity check (re-checked inside transaction)
 $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM GamePlayers WHERE game_id = ?");
 $stmt->execute([$gameId]);
 $currentPlayers = $stmt->fetch()['count'];
@@ -60,18 +61,31 @@ if ($currentPlayers >= $game['max_players']) {
 }
 
 try {
-    $turnOrder = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $currentPlayers) {
-        $turnOrder = $currentPlayers;
-        
+    $turnOrder = withTransaction($pdo, function($pdo) use ($gameId, $playerId, $game) {
+        // Lock game row — prevents concurrent joins from assigning duplicate turn_order
+        $stmt = $pdo->prepare("SELECT active_players FROM Games WHERE game_id = ? FOR UPDATE");
+        $stmt->execute([$gameId]);
+
+        // Re-count inside the lock (authoritative)
+        $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM GamePlayers WHERE game_id = ?");
+        $stmt->execute([$gameId]);
+        $currentCount = (int)$stmt->fetch()['count'];
+
+        if ($currentCount >= (int)$game['max_players']) {
+            throw new Exception('Game is full');
+        }
+
+        $turnOrder = $currentCount; // safe: determined under lock
+
         $stmt = $pdo->prepare("
             INSERT INTO GamePlayers (game_id, player_id, turn_order, ships_placed, is_eliminated)
             VALUES (?, ?, ?, FALSE, FALSE)
         ");
         $stmt->execute([$gameId, $playerId, $turnOrder]);
-        
+
         $stmt = $pdo->prepare("UPDATE Games SET active_players = active_players + 1 WHERE game_id = ?");
         $stmt->execute([$gameId]);
-        
+
         return $turnOrder;
     });
     
@@ -81,6 +95,9 @@ try {
     ], 200);
     
 } catch (Exception $e) {
+    if ($e->getMessage() === 'Game is full') {
+        badRequest('Game is full');
+    }
     error_log("Failed to join game: " . $e->getMessage());
     serverError('Failed to join game');
 }

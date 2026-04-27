@@ -1,24 +1,8 @@
-# HTACCESS Configuration for Battleship API Routing
+# HTACCESS Configuration for Battle ship API Routing
+# Enables clean URL routing for API endpoints
+
 RewriteEngine On
 RewriteBase /
-
-# ============================================
-# LiteSpeed Rate Limit Bypass
-# ============================================
-<IfModule LiteSpeed>
-    RewriteRule .* - [E=noabort:1]
-    RewriteRule .* - [E=noconntimeout:1]
-</IfModule>
-
-# ============================================
-# CORS Headers
-# ============================================
-<IfModule mod_headers.c>
-    Header always set Access-Control-Allow-Origin "*"
-    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-    Header always set Access-Control-Allow-Headers "Content-Type, X-Test-Password"
-    Header unset Retry-After
-</IfModule>
 
 # Allow CORS preflight requests
 RewriteCond %{REQUEST_METHOD} OPTIONS
@@ -39,6 +23,9 @@ RewriteRule ^api/reset/?$ api/reset.php [L]
 RewriteRule ^api/players/?$ api/players.php [L]
 # GET /api/players/{id}/stats
 RewriteRule ^api/players/([^/]+)/stats/?$ api/players.php [L]
+
+# PATCH /api/players/{id}
+RewriteRule ^api/players/([^/]+)/?$ api/players.php [L]
 
 # Game endpoints
 # GET /api/games (list) + POST /api/games (create)

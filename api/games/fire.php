@@ -61,7 +61,7 @@ try {
         }
         
         // Validate it's player's turn
-        if ($gamePlayer['turn_order'] != $game['current_turn_index']) {
+        if ($gamePlayer['turn_order'] !== $game['current_turn_index']) {
             forbidden('Not your turn');
         }
         
@@ -94,7 +94,7 @@ try {
         
         // Check if hit or miss
         $stmt = $pdo->prepare("
-            SELECT ship_id FROM Ships 
+            SELECT ship_id, group_id FROM Ships
             WHERE game_id = ? AND player_id = ? AND row = ? AND col = ? AND is_sunk = FALSE
         ");
         $stmt->execute([$gameId, $targetPlayerId, $row, $col]);
@@ -119,11 +119,33 @@ try {
         $stmt->execute([$playerId]);
         
         $winnerId = null;
-        $gameStatus = 'playing'; // Use 'playing' in responses (spec term)
-        
+        $gameStatus = 'active';
+        $shipSunk = false;
+        $sunkShipSize = 0;
+
+        // If hit, mark ship cell as sunk and check if the whole ship group is destroyed
         if ($isHit) {
             $stmt = $pdo->prepare("UPDATE Ships SET is_sunk = TRUE WHERE ship_id = ?");
             $stmt->execute([$ship['ship_id']]);
+
+            // Count remaining unsunk cells in this ship group
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*) FROM Ships
+                WHERE game_id = ? AND player_id = ? AND group_id = ? AND is_sunk = FALSE
+            ");
+            $stmt->execute([$gameId, $targetPlayerId, (int)$ship['group_id']]);
+            $remainingInGroup = (int)$stmt->fetchColumn();
+
+            if ($remainingInGroup === 0) {
+                $shipSunk = true;
+                // Determine ship size (= total cells in this group) for the frontend label
+                $stmt = $pdo->prepare("
+                    SELECT COUNT(*) FROM Ships
+                    WHERE game_id = ? AND player_id = ? AND group_id = ?
+                ");
+                $stmt->execute([$gameId, $targetPlayerId, (int)$ship['group_id']]);
+                $sunkShipSize = (int)$stmt->fetchColumn();
+            }
             
             // Check if target is eliminated (all ships sunk)
             $stmt = $pdo->prepare("
@@ -199,17 +221,14 @@ try {
             $stmt->execute([$nextTurnOrder, $gameId]);
         }
         
-        $response = [
-            'result'         => $result,
-            'next_player_id' => $nextPlayerId,
-            'game_status'    => $gameStatus,
+        return [
+            'result'          => $result,
+            'ship_sunk'       => $shipSunk,
+            'sunk_ship_size'  => $sunkShipSize,
+            'next_player_id'  => $nextPlayerId,
+            'game_status'     => $gameStatus,
+            'winner_id'       => $winnerId ? (int)$winnerId : null
         ];
-
-        if ($gameStatus === 'finished') {
-            $response['winner_id'] = (int)$winnerId;
-        }
-
-        return $response;
     });
     
     jsonResponse($result, 200);
